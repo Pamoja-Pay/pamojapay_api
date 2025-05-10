@@ -1,0 +1,10 @@
+# composer vendor dir
+/vendor
+
+/runtime
+
+/web/payments
+
+/web/profile
+
+composer.lock

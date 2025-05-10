@@ -1,0 +1,30 @@
+{
+    "name": "yiisoft/yii2-pronest-micro_api",
+    "description": "Yii 2 Basic Project Template",
+    "require": {
+        "yiisoft/yii2": "~2.0.14",
+        "yiisoft/yii2-httpclient": "^2.0@dev",
+        "mongosoft/yii2-soap-client": "*",
+        "firebase/php-jwt": "^6.0",
+        "yiisoft/yii2-swiftmailer": "~2.0.0 || ~2.1.0",
+        "phpmailer/phpmailer": "^6.9"
+    },
+    "repositories": [
+        {
+            "type": "composer",
+            "url" : "https://asset-packagist.org"
+        }
+    ],
+    "authors":[
+        {
+            "name": "John Magaya",
+            "email": "magayajohnoffice@gmail.com",
+            "role": "Leading Developer"
+        }
+    ],
+    "config": {
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true
+        }
+    }
+}
