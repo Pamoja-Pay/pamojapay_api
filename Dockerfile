@@ -20,6 +20,8 @@ COPY . /var/www/html
 COPY --from=composer:2.5 /usr/bin/composer /usr/bin/composer
 
 # Install PHP dependencies
+WORKDIR /app
+COPY . .
 RUN composer install --no-dev --optimize-autoloader
 
 # Set permissions for Yii runtime and assets
