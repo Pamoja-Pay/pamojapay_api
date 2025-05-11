@@ -62,11 +62,18 @@ return [
             // 'password' => 'Bongoflava@01',
             // 'charset' => 'utf8',
 
+            // 'class' => 'yii\db\Connection',
+            // //'driverName' => 'sqlsrv',
+            // 'dsn' => 'sqlsrv:Server=DESKTOP-4QP3S7A\NEWSERVER;Database=pamojapay_db',
+            // 'username' => 'sys_user',
+            // 'password' => 'sys@2019',
+            // 'charset' => 'utf8',
+
+            // create connction which will pick values from .env file
             'class' => 'yii\db\Connection',
-            //'driverName' => 'sqlsrv',
-            'dsn' => 'sqlsrv:Server=DESKTOP-4QP3S7A\NEWSERVER;Database=pamojapay_db',
-            'username' => 'sys_user',
-            'password' => 'sys@2019',
+            'dsn' => getenv('DB_DSN'),
+            'username' => getenv('DB_USERNAME'),
+            'password' => getenv('DB_PASSWORD'),
             'charset' => 'utf8',
         ],
         'log' => [
