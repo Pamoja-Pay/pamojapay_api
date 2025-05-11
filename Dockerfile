@@ -5,6 +5,7 @@ FROM php:8.1-apache
 RUN apt-get update && apt-get install -y \
     libzip-dev \
     unzip \
+    libxml2-dev \
     && docker-php-ext-install zip pdo pdo_mysql soap
 
 # Enable Apache mod_rewrite
