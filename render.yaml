@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: pamojapay-api
+    env: php
+    buildCommand: composer install
+    startCommand: vendor/bin/yii serve 0.0.0.0:$PORT
+    envVars:
+      - key: YII_DEBUG
+        value: false
+      - key: YII_ENV
+        value: prod 
