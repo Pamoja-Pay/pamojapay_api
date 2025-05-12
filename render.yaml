@@ -2,7 +2,7 @@ services:
   - type: web
     name: pamojapay-api
     env: php
-    buildCommand: composer install
+    buildCommand: composer install && apt-get update && apt-get install -y php-pgsql && apt-get install -y php8.2-pgsql
     startCommand: vendor/bin/yii serve 0.0.0.0:$PORT
     envVars:
       - key: YII_DEBUG
