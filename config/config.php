@@ -57,7 +57,7 @@ return [
         ],
         'db' => [
             'class' => 'yii\db\Connection',
-            'dsn' => 'pgsql:host=dpg-d0g68l24d50c73fgl5rg-a;port=5432;dbname=pamojapay_db;sslmode=require;options=--endpoint%3Ddpg-d0g68l24d50c73fgl5rg-a',
+            'dsn' => 'pgsql:host=dpg-d0g68l24d50c73fgl5rg-a.us-east-1.aws.neon.tech;port=5432;dbname=pamojapay_db;sslmode=require;options=--endpoint%3Ddpg-d0g68l24d50c73fgl5rg-a',
             'username' => 'minick',
             'password' => 'tgppLVtBZ4TNmFYRwEN62ae2RbylCdRS',
             'charset' => 'utf8',
