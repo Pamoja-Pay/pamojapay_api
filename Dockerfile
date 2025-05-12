@@ -6,7 +6,8 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     unzip \
     libxml2-dev \
-    && docker-php-ext-install zip pdo pdo_mysql soap
+    libpq-dev \
+    && docker-php-ext-install zip pdo pdo_mysql soap pdo_pgsql pgsql
 
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
@@ -24,7 +25,7 @@ RUN sed -i 's|DocumentRoot /var/www/html|DocumentRoot /var/www/html/web|g' /etc/
 COPY --from=composer:2.5 /usr/bin/composer /usr/bin/composer
 
 # Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction --no-progress
+RUN composer install --no-dev --optimize-autoloader --prefer-dist
 
 # Set permissions for Yii runtime and assets
 RUN mkdir -p /var/www/html/runtime /var/www/html/web/assets \
