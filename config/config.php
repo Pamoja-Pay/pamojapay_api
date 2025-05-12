@@ -56,22 +56,8 @@ return [
             'loginUrl' => null
         ],
         'db' => [
-            // 'class' => 'yii\db\Connection',
-            // 'dsn' => 'mysql:host=localhost;dbname=minick_store_db',
-            // 'username' => 'root',
-            // 'password' => 'Bongoflava@01',
-            // 'charset' => 'utf8',
-
-            // 'class' => 'yii\db\Connection',
-            // //'driverName' => 'sqlsrv',
-            // 'dsn' => 'sqlsrv:Server=DESKTOP-4QP3S7A\NEWSERVER;Database=pamojapay_db',
-            // 'username' => 'sys_user',
-            // 'password' => 'sys@2019',
-            // 'charset' => 'utf8',
-
-            // create connction which will pick values from .env file
             'class' => 'yii\db\Connection',
-            'dsn' => 'pgsql:host=dpg-d0g68l24d50c73fgl5rg-a.us-east-1.aws.neon.tech;port=5432;dbname=pamojapay_db;sslmode=require',
+            'dsn' => 'pgsql:host=dpg-d0g68l24d50c73fgl5rg-a;port=5432;dbname=pamojapay_db;sslmode=require;options=--endpoint%3Ddpg-d0g68l24d50c73fgl5rg-a',
             'username' => 'minick',
             'password' => 'tgppLVtBZ4TNmFYRwEN62ae2RbylCdRS',
             'charset' => 'utf8',
