@@ -71,9 +71,9 @@ return [
 
             // create connction which will pick values from .env file
             'class' => 'yii\db\Connection',
-            'dsn' => getenv('DB_DSN'),
-            'username' => getenv('DB_USERNAME'),
-            'password' => getenv('DB_PASSWORD'),
+            'dsn' => 'pgsql:host=dpg-d0g68l24d50c73fgl5rg-a.us-east-1.aws.neon.tech;port=5432;dbname=pamojapay_db',
+            'username' => 'minick',
+            'password' => 'tgppLVtBZ4TNmFYRwEN62ae2RbylCdRS',
             'charset' => 'utf8',
         ],
         'log' => [
