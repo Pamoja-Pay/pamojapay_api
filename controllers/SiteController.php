@@ -11,6 +11,7 @@ class SiteController extends Controller
             'verbs' => [
                 'class' => 'yii\filters\VerbFilter',
                 'actions' => [
+                    'index' => ['GET'],
                     '*' => ['POST'],
                 ],
             ],
