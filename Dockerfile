@@ -30,8 +30,10 @@ RUN composer install --no-dev --optimize-autoloader --prefer-dist --no-interacti
 RUN mkdir -p /var/www/html/runtime /var/www/html/web/assets \
     && chown -R www-data:www-data /var/www/html/runtime /var/www/html/web/assets
 
-# Expose port 80
-EXPOSE 80
+# Set Apache to listen on the port Render expects
+ENV PORT 10000
+RUN sed -i "s/80/\${PORT}/g" /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf
+EXPOSE 10000
 
 # Start Apache in the foreground
 CMD ["apache2-foreground"] 
