@@ -58,7 +58,7 @@ return [
         ],
         'db' => [
             'class' => 'yii\db\Connection',
-            'dsn' => 'mysql:host=mysql.us.stackcp.com:65353;dbname=pamojapay_db-353039386bbe',
+            'dsn' => 'mysql:host=mysql.us.stackcp.com:61402;dbname=pamojapay_db-353039386bbe',
             'username' => 'pamojapay_db-353039386bbe',
             'password' => 'ag6h96uwjt',
             'charset' => 'utf8',
