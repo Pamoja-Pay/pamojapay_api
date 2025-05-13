@@ -109,11 +109,6 @@ return [
                     'maxFileSize' => 1024 * 2,
                     'maxLogFiles' => 20,
                 ],
-                [
-                    'class' => 'yii\log\StreamTarget',
-                    'stream' => 'php://stdout',
-                    'levels' => ['error', 'warning', 'info'],
-                ],
             ],
         ],
 
