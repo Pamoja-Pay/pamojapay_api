@@ -56,13 +56,13 @@ return [
             'enableSession' => false,
             'loginUrl' => null
         ],
-        // 'db' => [
-        //     'class' => 'yii\db\Connection',
-        //     'dsn' => 'mysql:host=mysql.us.stackcp.com:65353;dbname=pamojapay_db-353039386bbe',
-        //     'username' => 'pamojapay_db-353039386bbe',
-        //     'password' => 'ag6h96uwjt',
-        //     'charset' => 'utf8',
-        // ],
+        'db' => [
+            'class' => 'yii\db\Connection',
+            'dsn' => 'mysql:host=mysql.us.stackcp.com:65353;dbname=pamojapay_db-353039386bbe',
+            'username' => 'pamojapay_db-353039386bbe',
+            'password' => 'ag6h96uwjt',
+            'charset' => 'utf8',
+        ],
         'log' => [
             'traceLevel' => YII_DEBUG ? 3 : 0,
             'targets' => [
