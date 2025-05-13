@@ -26,4 +26,9 @@ class SiteController extends Controller
             'VERSION'  => '0.0.1' 
         ];
     }
+
+    public function actionMyIp()
+    {
+        return file_get_contents('https://api.ipify.org');
+    }
 }
