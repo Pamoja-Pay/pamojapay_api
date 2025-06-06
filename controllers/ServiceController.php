@@ -12,14 +12,19 @@ use app\components\Helper;
 use app\models\PayoutSchedule;
 use app\models\PayoutScheduleSetting;
 use app\models\ContributionSchedule;
+use app\models\OutgoingPayment;
 use app\models\Payments;
 use app\models\Groups;
+use app\models\SharesConfig;
 use app\models\NotificationRecipient;
+use app\models\LeavingGroupTracking;
+use app\models\Shares;
 use app\models\Pledges;
 use yii\rest\Controller;
 use app\models\User;
 use yii\web\HttpException;
 use yii\web\UploadedFile;
+use app\models\MemberExtraAmount;
 
 class ServiceController extends Controller
 {
@@ -84,6 +89,55 @@ class ServiceController extends Controller
     public function actionTest(){
 
         return $this->controller. " IT WORKS FINE";
+    }
+
+    public function actionProfile(){
+        $user = User::find()->where(['id' => $this->user_id])->one();
+        if (empty($user)) throw new HttpException(255, 'User not found', 01);
+
+        $response = [
+          'success' => true,
+            'code' => 0,
+            'user' => $user
+        ];
+
+        return $response;
+    }
+
+    # Dashboard
+    public function actionDashboard(){
+
+        //get user
+        $user = User::find()->where(['id' => $this->user_id])->one();
+        //get user payments 
+        $user_payments = Payments::find()->where(['user_id' => $this->user_id, 'status' => 'verified']) ->sum('amount');
+
+        //get group count
+        $group_count = GroupMembers::find()->where(['user_id' => $this->user_id])->count();
+
+        //get upcoming schedules
+        $upcoming_schedules = Yii::$app->helper->nextContributionsPerGroup($this->user_id);
+
+        //get overdue schedules
+        $overdue_schedules = Yii::$app->helper->overdueContributionsPerGroup($this->user_id);
+
+         //notification count 
+         $notification_count = NotificationRecipient::find()->where(['user_id' => $this->user_id, 'read_at' => null])->count();
+
+        $response = [
+            'success' => true,
+            'code' => 0,
+            'data' => [
+                'name' => $user->name,
+                'total_contributions' => $user_payments,
+                'group_count' => $group_count,
+                'upcoming_payments' => $upcoming_schedules,
+                'overdue_payments' => $overdue_schedules,
+                'notifications' => $notification_count
+            ] 
+        ];
+
+        return $response;
     }
    
     # My groups
@@ -264,22 +318,27 @@ class ServiceController extends Controller
         $is_member = GroupMembers::find()->where(['group_id' => $group_id, 'user_id' => $user_id])->one();
         if (!empty($is_member)) throw new HttpException(255, "The User is already a member", 03);
 
+        //check leaving group tracking for record
+        $leavingRecord = LeavingGroupTracking::find()->where(['user_id' => $user_id, 'group_id' => $group_id])->one();
+        if (!empty($leavingRecord)) {
+            if ($leavingRecord['attempts'] >= 3) throw new HttpException(255, 'You Cant add this member has been removed more than three times', 13);
+        }
+
         //check if group is Mchezo
         if ($group->type == 'Mchezo'){
             //check if group has payout schedule setting
             $payout_setting = PayoutScheduleSetting::find()->where(['group_id' => $group_id])->one();
             if (empty($payout_setting)) throw new HttpException(255, "Please add payout schedule setting before adding members", 13);
         }
-
-        if ($group->type != 'Event'){
+        if (!$group || !in_array($group->type, ['Event', 'Ujamaa'])){
             //check if contribution schedule is set
             $contribution_schedule = Contributions::find()->where(['group_id' => $group_id])->one();
             if (empty($contribution_schedule)) throw new HttpException(255, "Please add contribution schedule before adding members", 13);
         }
 
         //check if the group has reach its maximum number of members
-        //get user package id
-        $user_details = User::findOne($this->user_id);
+        //get group owner package id
+        $user_details = User::findOne($group->created_by);
         $package_id = $user_details->package_id;
 
         //get package group limit
@@ -395,12 +454,47 @@ class ServiceController extends Controller
 
         if ($is_member2->delete()){
 
+            //check if there is contribution schedule for the group for this user and the is_paid is 0
+            $contribution_schedule = ContributionSchedule::find()->where(['group_id'=> $group_id, 'user_id'=> $member_id, 'is_paid'=> 0])->one();
+
+            if (!empty($contribution_schedule)){
+                $contribution_schedule->delete(); 
+            }
+
+            // check if there is payout schedule for the group for this user
+
+            $payout_schedule = PayoutSchedule::find()->where(['group_id'=> $group_id, 'user_id'=> $member_id])->one();
+
+            if (!empty($payout_schedule)){
+                $payout_schedule->delete();
+            }
+
             $user_details = User::find()->where(['id' => $this->user_id])->one();
             if (empty($user_details)) throw new HttpException(255, 'User not found', 5);
             //get package
             $package = Packages::find()->where(['id' => $this->package_id])->one();
             if (empty($package)) throw new HttpException(255, 'Package not found', 5);
 
+            //recording leaving record
+            //check if record exist
+            $record = LeavingGroupTracking::find()
+                ->where(['user_id'=> $member_id])
+                ->andWhere(['group_id'=> $group_id])
+            ->one();
+            Yii::error("attempts");
+            Yii::error($this->user_id); 
+            if (empty($record)) {
+                $record = new LeavingGroupTracking();
+                $record->user_id = $member_id;
+                $record->group_id = $group_id;
+                $record->attempts = 1;
+                $record->save(false);
+            }
+            else {
+                Yii::error($record);
+                $record->attempts = $record->attempts + 1;
+                $record->save(false);
+            }
 
             //generate notification
             $params = [
@@ -438,6 +532,99 @@ class ServiceController extends Controller
 
     }
 
+    # Leave the Group
+    public function actionLeaveGroup(){
+        $group_id = Yii::$app->request->post('group_id');
+        if (empty($group_id)) throw new HttpException(255, 'Group id is required', 01);
+
+        //check if group exist
+        $group = Groups::find()->where(['id' => $group_id])->one();
+        if (empty($group)) throw new HttpException(255, 'Group not found', 5);
+
+        //check if current user is group member
+        $group_member = GroupMembers::find()->where(['group_id'=> $group_id, 'user_id'=> $this->user_id])->one();
+        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
+
+        //check if the current user is the group admin
+        if ($group_member->role == 'admin') throw new HttpException(255, 'You are the group admin', 13);
+
+        //remove the user from the group
+        $group_member->delete();
+
+        //check if there is contribution schedule for the group for this user and the is_paid is 0
+        $contribution_schedule = ContributionSchedule::find()->where(['group_id'=> $group_id, 'user_id'=> $this->user_id, 'is_paid'=> 0])->one();
+
+        if (!empty($contribution_schedule)){
+            $contribution_schedule->delete(); 
+        }
+
+        // check if there is payout schedule for the group for this user
+
+        $payout_schedule = PayoutSchedule::find()->where(['group_id'=> $group_id, 'user_id'=> $this->user_id])->one();
+
+        if (!empty($payout_schedule)){
+            $payout_schedule->delete();
+        }
+
+        // $group_creator = $group->created_by;
+        // $creator_details = User::find()->where(['id'=> $group_creator])->one(); 
+        // $package_id = $creator_details->package_id;
+        //$package = Packages::findOne($package_id);
+
+        $package = Yii::$app->helper->getPackagebyGroupID($group_id);
+
+        $user = User::findOne($this->user_id);
+
+        //recording leaving record
+        //check if record exist
+        $record = LeavingGroupTracking::find()->where(['user_id'=> $this->user_id])
+        ->andWhere(['group_id'=> $group_id])
+        ->one();
+        Yii::error("left attempts");
+        Yii::error($record); 
+        if (empty($record)) {
+            $record = new LeavingGroupTracking();
+            $record->user_id = $this->user_id;
+            $record->group_id = $group_id;
+            $record->attempts = 1;
+            $record->save(false);
+        }
+        else {
+            $record->attempts = $record->attempts + 1;
+            $record->save(false);
+        }
+
+        //generate notification
+        $params = [
+            'user_id' => $this->user_id,
+            'user_name' => $user->name,
+            'group_name' => $group->name,
+            'group_type'=> $group->type,
+            'group_id' => $group->id,
+            'role' => $group_member->role,
+            'lang' => $user->language,
+            'type' => $package->notification_support,
+            'process' => 'leaveGroup',
+        ];
+
+        $record_notification = Helper::generateNotification($params);
+        if ($record_notification){
+            $response = [
+                'success' => true,
+                'code' => 0,
+                'message' => 'User left successful',
+            ];
+        }
+        else{
+            $response = [
+                'success' => true,
+                'code' => 0,
+                'message' => 'User left success but failed to record notification',
+            ];
+        }
+        return $response;
+    }
+
     # Update user role in a group
     public function actionUpdateMember(){
         $member_id = Yii::$app->request->post('user_id');
@@ -458,7 +645,7 @@ class ServiceController extends Controller
         if (empty($group)) throw new HttpException(255, 'Group not found', 5);
 
         //check if user is member
-        $group_member = GroupMembers::find()->where(['group_id' => $group_id, 'user_id' => $this->user_id])->one();
+        $group_member = GroupMembers::find()->where(['group_id' => $group_id, 'user_id' => $user_id])->one();
         if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
         //check if user is admin
         if ($group_member->role != 'admin') throw new HttpException(255, 'You are not an admin of this group', 13);
@@ -467,8 +654,8 @@ class ServiceController extends Controller
         if ($user_id == $member_id) throw new HttpException(255, "You can not change your role", 13);
         
         //check if member is already member
-        $is_member = GroupMembers::find()->where(['group_id' => $group_id, 'user_id' => $member_id])->one();
-        if (empty($group_member)) throw new HttpException(255, 'This member is not a member of this group', 13);
+        $is_member = GroupMembers::find()->where(['group_id' => $group_id])->andWhere(['user_id' => $member_id])->one();
+        if (empty($is_member)) throw new HttpException(255, 'This user is not a member of this group', 13);
 
         //check if the role to be asigned equals to the same  member role
         if ($is_member->role == $role) throw new HttpException(255, "the user is already a ". $role , 03);
@@ -512,13 +699,14 @@ class ServiceController extends Controller
             if ($counts >= 2) throw new HttpException(255, "Group has maximum number of Coordinators", 15);
         }
         else throw new HttpException(255, "Role not Valid", 16);
+
         $is_member->role = $role;
         if ($is_member->save()){
 
-            $login_user_details = User::find()->where(['id' => $this->id])->one();
-            if (empty($login_user_details)) throw new HttpException(255, 'User not found', 5);
+            $group_owner = User::find()->where(['id' => $group->created_by])->one();
+            if (empty($group_owner)) throw new HttpException(255, 'User not found', 5);
 
-            $package = Packages::find()->where(['id' => $this->package_id])->one();
+            $package = Packages::find()->where(['id' => $group_owner->package_id])->one();
             if (empty($package)) throw new HttpException(255, 'Package not found', 5);
             //generate notification
             $params = [
@@ -527,8 +715,8 @@ class ServiceController extends Controller
                 'group_name' => $group->name,
                 'group_type'=> $group->type,
                 'group_id' => $group->id,
-                'role' => $is_member->role,
-                'lang' => $login_user_details->language,
+                'role' => $is_member['role'],
+                'lang' => $group_owner->language,
                 'type' => $package->notification_support,
                 'process' => 'updateMember',
             ];
@@ -560,7 +748,9 @@ class ServiceController extends Controller
         if (empty($group_name)) throw new HttpException(255, 'Group name is required', 01);
 
         $groups = Groups::find()
+            ->leftJoin('group_members', 'group_members.group_id = groups.id')        
             ->where(['like', 'name', $group_name])
+            ->andWhere(['group_members.user_id' => $this->user_id])
             ->all();
             
         if (empty($groups)) throw new HttpException(255, 'Group not found', 5);
@@ -1286,17 +1476,27 @@ class ServiceController extends Controller
 
         $amount = Yii::$app->request->post('amount');
         if (empty($amount)) throw new HttpException(255, 'Amount is required', 01);
+        $amount = (int)$amount;
+        // check if amount is bellow limit
+        if ($amount < 1000) throw new HttpException(255, 'Amount must be above 1000', 02);
 
-        $payment_proof = UploadedFile::getInstanceByName("payment_proof");
-        if (empty($payment_proof)) throw new HttpException(255, 'Payment proof is required', 01);
+        $payment_type = Yii::$app->request->post('payment_type');  // can be Buy Share or Contribution
+        if (empty($payment_type)) throw new HttpException(255, 'Payment type is required', 01);
 
-        $payment_date = Yii::$app->request->post('payment_date');
-        if (empty($payment_date)) throw new HttpException(255, 'Payment date is required', 01);
+        $channel = Yii::$app->request->post('payment_method');
+        if (empty($channel)) throw new HttpException(255, 'Payment method is required', 01);
 
-        $payment_method = Yii::$app->request->post('payment_method');
-        if (empty($payment_method)) throw new HttpException(255, 'Payment method is required', 01);
+        $payer_msisdn = Yii::$app->request->post('msisdn');
+        if (empty($payer_msisdn)) throw new HttpException(255, 'Payer msisdn is required', 01);
+        //validate mobile 
+        $cus_mob = Yii::$app->helper->validateMobile($payer_msisdn);
+
+        if (!$cus_mob['success']) throw new HttpException(255, $cus_mob['message'], 02);
+
+        $payer_msisdn = $cus_mob['cus_mob'];
 
         $user_id = $this->user_id;
+        
 
         //check if group exists
         $group = Groups::find()->where(['id' => $group_id])->one();
@@ -1304,51 +1504,120 @@ class ServiceController extends Controller
 
         //check if user is a member of the group
         $group_member = GroupMembers::find()->where(['group_id' => $group_id, 'user_id' => $user_id])->one();
-        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);   
+        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13); 
 
-        //save the payment proof
-        $proof_url = time().'.'.$payment_proof->extension;
-        $path = Yii::getAlias('@webroot') . '/'. 'payments/' . $proof_url;
-        if($payment_proof->saveAs($path)){
-            $payment = new Payments();
-            $payment->group_id = $group_id;
-            $payment->user_id = $user_id;
-            $payment->amount = $amount;
-            $payment->payment_date = $payment_date;
-            $payment->reference = time().'-000'.$user_id;
-            $payment->status = 'pending';
-            $payment->verified_by = null;
-            $payment->verified_at = null;
-            $payment->proof_url = $proof_url;
-            $payment->payment_method = $payment_method;
-            if ($payment->save()){
+        //if the payment if for buying shares
+        //check if group is kikoba
+        if ($group->type!= 'Kikoba') {
+            if ($payment_type == 'Buy Share'){
+                //check if group has shares config
+                $shares_config = SharesConfig::find()->where(['group_id' => $group_id])->one();
+                if (empty($shares_config)) throw new HttpException(255, "the group has not set shares config", 13);
 
-                // //check group type
-                // if ($group->type == 'Event'){
-                //     //reduce the remaining amount
-                //     $pledges = Pledges::find()->where(['group_id' => $group_id, 'user_id' => $user_id])->one();
-                //     if (empty($pledges)) throw new HttpException(255, 'No pledges found', 01);
+                //check if the buy period has passed
+                $buy_period = $shares_config->buy_period_end;
+                if (!empty($buy_period)){
+                    if (strtotime($buy_period) < time()) throw new HttpException(255, "the buy period has passed", 13);
+                }
 
-                //     $pledges->remain_amount = $pledges->remain_amount - $amount;
-                //     $pledges->paid_amount = $pledges->paid_amount + $amount;
-                //     $pledges->paid_at = $payment_date;
-                //     $pledges->save();
-                // }
+                //get share price
+                $shares_price = $shares_config->share_price;
+
+                //get max shares per member
+                $max_shares_per_member = $shares_config->max_shares_per_member;
+
+                // check shares already bought
+                $total_shares_bought = Shares::find()->where(['group_id' => $group_id])->sum('shares_bought') ?? 0;
+
+                // get remaining shares to be bought
+                $remaining_shares = 100 - $total_shares_bought;
+
+                // check if the user has already bought shares
+                $user_shares = Shares::find()->where(['group_id' => $group_id, 'member_id' => $this->user_id])->sum('shares_bought')?? 0;
+
+                // check to get the amount of shares remain for member to buy
+                $remaining_shares_for_member = $max_shares_per_member - $user_shares;
+
+                //get shares to be bought
+                $shares_to_be_bought = $amount / $shares_price;
+
+                if ($shares_to_be_bought > $remaining_shares_for_member) throw new HttpException(255, 'You have exceeded your max shares per member remaining shares you can buy is: ' .$remaining_shares_for_member, 13);
+
+                
+                // check exceed max shares
+                if ($remaining_shares < $shares_to_be_bought) throw new HttpException(255, 'Shares limit exceeded', 13);
+            }
+        }
+
+        
+
+        // //TODO:: perform push payment
+        // $type = $payment_type; 
+        // $initiatePush = Yii::$app->helper->pushPayment($payer_msisdn, $amount, $channel, $this->user_id, group_id, $type);
+
+        // if ($initiatePush['success']){
+        //     $response = [
+        //         'success' => true,
+        //         'message' => 'Payment initiated successfully',
+        //     ];
+        // }
+        // else{
+        //     $response = [
+        //         'success' => false,
+        //         'message' => 'Payment failed',
+        //     ];
+        // }
+        // return $response;
+
+        //TODO:: FOR TESTING 
+        $trans_ref = 'Test'. time(); 
+
+        $model = new Payments();
+        $model->group_id = $group_id;
+        $model->user_id = $this->user_id;;
+        $model->reference = $trans_ref;
+        $model->amount = $amount;
+        $model->payment_date = date("Y-m-d H:i:s");
+        $model->payment_method = 'Selcom';
+        $model->status = 'verified';
+        if ($payment_type == 'Buy Share'){
+            $model->payment_for = 'Buying Shares';
+        }
+        else{
+            $model->payment_for = $payment_type;   
+        }
+        $model->save(false);
+
+         //check if the group is a Event
+         if ($group->type == 'Event'){
+            //reduce the remaining amount
+            $pledges = Pledges::find()->where(['group_id' => $group_id, 'user_id' => $this->user_id])->one();
+            if (empty($pledges)) throw new HttpException(255, 'No pledges found', 01);
+            $pledges->remain_amount = $pledges->remain_amount - $amount;
+            if ($pledges->remain_amount < 0){
+                $pledges->status = 'Full Paid';
+            }
+            else{
+                $pledges->status = 'Partially Paid';
+            }
+            $pledges->paid_amount = $pledges->paid_amount + $amount;
+            $pledges->paid_at = $model->payment_date;
+            if ($pledges->save()){
                 //genereate notification
-                $login_user_details = User::find()->where(['id' => $this->user_id])->one();
-                if (empty($login_user_details)) throw new HttpException(255, 'User not Found', 5);
-                $package = Packages::find()->where(['id' => $this->package_id])->one();
-                if (empty($package)) throw new HttpException(255, 'Package not found', 5);
+                $payer_id = $this->user_id;
+                $payer_details = User::find()->where(['id' => $payer_id])->one();
+                //get group owner package details
+                $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
                 $params = [
                     'user_id' => $this->user_id,
-                    'user_name' => $this->login_user_name,
+                    'user_name' => $payer_details->name,
                     'group_name' => $group->name,
                     'group_type'=> $group->type,
                     'group_id' => $group->id,
                     'amount' => $amount,
-                    'lang' => $login_user_details->language,
+                    'lang' => $payer_details->language,
                     'type' => $package->notification_support,
-                    'process' => 'newPayment',
+                    'process' => 'approvedPayment',
                 ];
     
                 $record_notification = Helper::generateNotification($params);
@@ -1356,26 +1625,268 @@ class ServiceController extends Controller
                     $response = [
                         'success' => true,
                         'code' => 0,
-                        'message' => 'Payment added successfully Waiting for verification',
+                        'message' => 'Payment Completed successfully',
                     ];
                 }
                 else{
                     $response = [
                         'success' => true,
                         'code' => 0,
-                        'message' => 'Payment added successfully Waiting for verification failed to generate notification',
+                        'message' => 'Payment Completed  successfully failed to generete notification',
                     ];
                 }
-
                 
             }
-            else throw new HttpException(255, 'Failed to record Payment', 04);
+            else throw new HttpException(255, 'Failed to update pledges', 9);
 
             return $response;
         }
-        else{
-            throw new HttpException(255, 'Failed to save payment proof', 18);
-        }        
+        else if ($group->type == 'Kikoba'){
+            if ($payment_type == 'Contribution'){
+                $payment = $amount;
+                // Fetch unpaid contribution schema records ordered by due_date
+                $contributions = ContributionSchedule::find()
+                    ->where(['user_id' => $this->user_id, 'group_id' => $group_id])
+                    ->andWhere(['is_paid' => 0])
+                    ->orderBy(['due_date' => SORT_ASC])
+                    ->all();
+
+                foreach ($contributions as $contribution) {
+                    if ($payment <= 0) {
+                        break;
+                    }
+
+                    $remaining = $contribution->remain_amount;
+
+                    if ($payment >= $remaining) {
+                        // Full payment for this record
+                        $contribution->paid_amount += $remaining;
+                        $contribution->remain_amount = 0;
+                        $contribution->is_paid = 1;
+                        $contribution->paid_at = date('Y-m-d H:i:s');
+                        $payment -= $remaining;
+                    } else {
+                        // Partial payment
+                        $contribution->paid_amount += $payment;
+                        $contribution->remain_amount -= $payment;
+                        $payment = 0;
+                    }
+
+                    $contribution->save(false); 
+                }
+                //genereate notification
+                $payer_id = $this->user_id;
+                $payer_details = User::find()->where(['id' => $payer_id])->one();
+                //get group owner package details
+                $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
+                $params = [
+                    'user_id' => $this->user_id,
+                    'user_name' => $payer_details->name,
+                    'group_name' => $group->name,
+                    'group_type'=> $group->type,
+                    'group_id' => $group->id,
+                    'amount' => $amount,
+                    'lang' => $payer_details->language,
+                    'type' => $package->notification_support,
+                    'process' => 'approvedPayment',
+                ];
+    
+                $record_notification = Helper::generateNotification($params);
+                if ($record_notification){
+                    $response = [
+                        'success' => true,
+                        'code' => 0,
+                        'message' => 'Payment Completed successfully',
+                    ];
+                }
+                else{
+                    $response = [
+                        'success' => true,
+                        'code' => 0,
+                        'message' => 'Payment Completed  successfully failed to generete notification',
+                    ];
+                }
+            }
+            else if ($payment_type == 'Buy Share'){
+                $model = new Shares();
+                $model->group_id = $group_id;
+                $model->member_id = $this->user_id;
+                $model->amount_paid = $amount;
+                $model->shares_bought = $shares_to_be_bought;
+                $model->bought_at = date('Y-m-d H:i:s');
+                $model->save(false);
+
+                //generate notification
+                $login_user_details = User::find()->where(['id' => $this->user_id])->one();
+                //get group owner package details
+                $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
+                if ($package['success']) {
+                    $params = [
+                        'user_id' => $this->user_id,
+                        'user_name' => $this->login_user_name,
+                        'lang' => $login_user_details->language,
+                        'type' => $package->notification_support,
+                        'group_id' => $group_id,
+                        'group_type' => 'Kikoba',
+                        'group_name' => $group->name,
+                        'process' => 'Buy Shares',
+                    ];
+
+                    $record_notification = Helper::generateNotification($params);
+
+                    if ($record_notification){
+                        $response = [
+                            'success' => true,
+                            'code' => 0,
+                            'message' => 'Payment Completed successfully',
+                        ];
+                    }
+                    else{
+                        $response = [
+                            'success' => true,
+                            'code' => 0,
+                            'message' => 'Payment Completed  successfully failed to generete notification',
+                        ];
+                    }
+                }
+            }
+        }
+        else if ($group->type == 'Mchezo'){
+            if ($payment_type == 'Contribution'){
+                $payment = $amount;
+                // Fetch unpaid contribution schema records ordered by due_date
+                $contributions = ContributionSchedule::find()
+                    ->where(['user_id' => $this->user_id, 'group_id' => $group_id])
+                    ->andWhere(['is_paid' => 0])
+                    ->orderBy(['due_date' => SORT_ASC])
+                    ->all();
+
+                foreach ($contributions as $contribution) {
+                    if ($payment <= 0) {
+                        break;
+                    }
+
+                    $remaining = $contribution->remain_amount;
+
+                    if ($payment >= $remaining) {
+                        // Full payment for this record
+                        $contribution->paid_amount += $remaining;
+                        $contribution->remain_amount = 0;
+                        $contribution->is_paid = 1;
+                        $contribution->paid_at = date('Y-m-d H:i:s');
+                        $payment -= $remaining;
+                    } else {
+                        // Partial payment
+                        $contribution->paid_amount += $payment;
+                        $contribution->remain_amount -= $payment;
+                        $payment = 0;
+                    }
+
+                    $contribution->save(false); 
+                }
+                //genereate notification
+                $payer_id = $this->user_id;
+                $payer_details = User::find()->where(['id' => $payer_id])->one();
+                //get group owner package details
+                $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
+                $params = [
+                    'user_id' => $this->user_id,
+                    'user_name' => $payer_details->name,
+                    'group_name' => $group->name,
+                    'group_type'=> $group->type,
+                    'group_id' => $group->id,
+                    'amount' => $amount,
+                    'lang' => $payer_details->language,
+                    'type' => $package->notification_support,
+                    'process' => 'approvedPayment',
+                ];
+    
+                $record_notification = Helper::generateNotification($params);
+                if ($record_notification){
+                    $response = [
+                        'success' => true,
+                        'code' => 0,
+                        'message' => 'Payment Completed successfully',
+                    ];
+                }
+                else{
+                    $response = [
+                        'success' => true,
+                        'code' => 0,
+                        'message' => 'Payment Completed  successfully failed to generete notification',
+                    ];
+                }
+            }
+        }
+        else if ($group->type == 'Ujamaa'){
+            if ($payment_type == 'Contribution'){
+                $payment = $amount;
+                // Fetch unpaid contribution schema records ordered by due_date
+                $contributions = ContributionSchedule::find()
+                    ->where(['user_id' => $this->user_id, 'group_id' => $group_id])
+                    ->andWhere(['is_paid' => 0])
+                    ->orderBy(['due_date' => SORT_ASC])
+                    ->all();
+
+                foreach ($contributions as $contribution) {
+                    if ($payment <= 0) {
+                        break;
+                    }
+
+                    $remaining = $contribution->remain_amount;
+
+                    if ($payment >= $remaining) {
+                        // Full payment for this record
+                        $contribution->paid_amount += $remaining;
+                        $contribution->remain_amount = 0;
+                        $contribution->is_paid = 1;
+                        $contribution->paid_at = date('Y-m-d H:i:s');
+                        $payment -= $remaining;
+                    } else {
+                        // Partial payment
+                        $contribution->paid_amount += $payment;
+                        $contribution->remain_amount -= $payment;
+                        $payment = 0;
+                    }
+
+                    $contribution->save(false); 
+                }
+                //genereate notification
+                $payer_id = $this->user_id;
+                $payer_details = User::find()->where(['id' => $payer_id])->one();
+                //get group owner package details
+                $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
+                $params = [
+                    'user_id' => $this->user_id,
+                    'user_name' => $payer_details->name,
+                    'group_name' => $group->name,
+                    'group_type'=> $group->type,
+                    'group_id' => $group->id,
+                    'amount' => $amount,
+                    'lang' => $payer_details->language,
+                    'type' => $package->notification_support,
+                    'process' => 'approvedPayment',
+                ];
+    
+                $record_notification = Helper::generateNotification($params);
+                if ($record_notification){
+                    $response = [
+                        'success' => true,
+                        'code' => 0,
+                        'message' => 'Payment Completed successfully',
+                    ];
+                }
+                else{
+                    $response = [
+                        'success' => true,
+                        'code' => 0,
+                        'message' => 'Payment Completed  successfully failed to generete notification',
+                    ];
+                }
+            }
+        }
+
+        return $response;       
     }
 
     # Verify Payment
@@ -1530,11 +2041,24 @@ class ServiceController extends Controller
                 ->where(['user_id' => $user_id, 'group_id' => $groupId])
                 ->andWhere(['status' => 'verified'])
                 ->sum('amount') ?? 0;
+            
+            $incomingPayment = Payments::find()
+                ->where(['group_id' => $groupId])
+                ->andWhere(['status' =>'verified'])
+                ->sum('amount')?? 0;
+            $outgoingPayment = OutgoingPayment::find()
+                ->where(['group_id' => $groupId])
+                ->andWhere(['status' =>'Approved'])
+                ->sum('amount')?? 0;
+            $balance = $incomingPayment - $outgoingPayment;    
 
             $expectedAmount = 0;
             $outstanding = 0;
+            $incomingAmount = $incomingPayment;
+            $outgoingAmount = $outgoingPayment;
+            $currentBalance = $balance;
 
-            if (in_array($groupType, ['Kikoba', 'Mchezo'])) {
+            if (in_array($groupType, ['Kikoba', 'Mchezo', 'Ujamaa'])) {
                 $today = date('Y-m-d');
             
                 // 1. Total expected contributions up to today (based on schedule)
@@ -1565,6 +2089,9 @@ class ServiceController extends Controller
                 'group_id' => $groupId,
                 'group_name' => $group['group_name'],
                 'group_type' => $groupType,
+                'incoming_amount' => $incomingAmount,
+                'outgoing_amount' => $outgoingAmount,
+                'current_balance' => $currentBalance,
                 'expected_amount' => $expectedAmount,
                 'paid_amount' => $paidAmount,
                 'outstanding' => max($outstanding, 0),
@@ -1592,7 +2119,7 @@ class ServiceController extends Controller
         if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
 
 
-        $payments = Payments::find()
+        $incoming_payments = Payments::find()
             ->select(['payments.*', 'groups.name as group_name', 'users.name as user_name'])
             ->leftJoin('groups', 'groups.id = payments.group_id')
             ->leftJoin('users', 'users.id = payments.user_id')
@@ -1600,16 +2127,206 @@ class ServiceController extends Controller
             ->orderBy(['payment_date' => SORT_DESC]) // Order by payment_date DESC
             ->asArray()
             ->all();
+        
+        $outgoing_payments = OutgoingPayment::find()
+            ->select(['outgoing_payment.*', 'groups.name as group_name', 'users.name as user_name'])
+            ->leftJoin('groups', 'groups.id = outgoing_payment.group_id')
+            ->leftJoin('users', 'users.id = outgoing_payment.recipient_id')
+            ->where(['group_id' => $group_id])
+            ->orderBy(['created_at' => SORT_DESC]) // Order by payment_date DESC
+            ->asArray()
+            ->all();    
 
         $response = [
             'success' => true,
             'code' => 0,
             'message' => 'Payments fetched successfully',
             'user_role' => $group_member->role,
-            'data' => $payments
+            'data' => [
+                'incoming_payments' => $incoming_payments,
+                'outgoing_payments' => $outgoing_payments
+            ]
         ];
 
         return $response;
+    }
+
+    # Approve Payment Request level 1
+    public function actionApprovePaymentRequest(){
+       $payment_id = Yii::$app->request->post('id');
+       if (empty($payment_id)) throw new HttpException(255, 'Payment ID is required', 01);
+       
+       $status = Yii::$app->request->post('status');
+       if (empty($status)) throw new HttpException(255, 'status is required', 01);
+
+       //check if the status is verified or rejected
+       if ($status != 'verified' && $status != 'rejected') throw new HttpException(255, 'Invalid payment status', 16);
+
+       $payment = OutgoingPayment::find()->where(['id' => $payment_id])->one();
+        if (empty($payment)) throw new HttpException(255, 'Payment not found', 5);
+
+        $user_id = $this->user_id;
+
+        $group = Groups::find()->where(['id' => $payment->group_id])->one();
+        if (empty($group)) throw new HttpException(255, 'Group not found', 5);
+
+        //check if user is an treasurer of the group
+        $group_member = GroupMembers::find()->where(['group_id' => $payment->group_id, 'user_id' => $user_id])->one();
+        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
+
+        if ($group_member->role != 'treasurer') throw new HttpException(255, 'You are not a treasurer of this group', 13);
+        $payment->approver_one = 1; //setting to true
+        $payment->updated_at = date('Y-m-d H:i:s');
+        if ($status =='verified'){
+            $payment->status = 'Preapproved';
+        }
+        else{
+            $payment->status = $status;
+        }
+        if($payment->save()){
+
+            if ($status == 'verified'){
+                $current_user = User::find()->where(['id' => $this->user_id])->one();
+                $group_owner = User::find()->where(['id' => $group->created_by])->one();
+                $package = Packages::find()->where(['id' => $group_owner->package_id])->one();
+                //genereate notification
+                $params = [
+                    'user_id' => $this->user_id,
+                    'user_name' => $current_user->name,
+                    'group_name' => $group->name,
+                    'amount'=> $payment->amount,
+                    'reason' => $payment->reason,
+                    'group_id' => $group->id,
+                    'role' => $group_member->role,
+                    'lang' => $group_owner->language,
+                    'type' => $package->notification_support,
+                    'process' => 'Withdraw Approval',
+                ];
+
+                $record_notification = Helper::generateNotification($params);
+            }
+            else if ($status =='rejected'){
+                $current_user = User::find()->where(['id' => $this->user_id])->one();
+                $group_owner = User::find()->where(['id' => $group->created_by])->one();
+                $package = Packages::find()->where(['id' => $group_owner->package_id])->one();
+                //genereate notification
+                $params = [
+                    'user_id' => $this->user_id,
+                    'user_name' => $current_user->name,
+                    'group_name' => $group->name,
+                    'amount'=> $payment->amount,
+                    'reason' => $payment->reason,
+                    'group_id' => $group->id,
+                    'role' => $group_member->role,
+                    'lang' => $group_owner->language,
+                    'type' => $package->notification_support,
+                    'process' => 'Withdraw Rejected',
+                ];
+
+                $record_notification = Helper::generateNotification($params);   
+            }
+
+            $response = [
+               'success' => true,
+                'code' => 0,
+               'message' => 'Payment'.$status.'successfully',
+            ];
+
+            return $response;
+        }
+        else{
+            Yii::error("*************************************** Error Update  Outgoing Payment Request ************************");
+            Yii::error(json_encode($payment->errors));
+            Yii::error("*************************************** end Error updating Outgoing Payment Request ************************");
+            throw new HttpException(255, 'Failed to verify payment', 9);
+        }
+    }
+
+    # Approve Payment Request level 2
+    public function actionApprovePaymentRequestLevel2(){
+        $payment_id = Yii::$app->request->post('id');
+        if (empty($payment_id)) throw new HttpException(255, 'Payment ID is required', 01);
+
+        $status = Yii::$app->request->post('status');
+        if (empty($status)) throw new HttpException(255,'status is required', 01);
+
+        //check if the status is verified or rejected
+        if ($status!='approved' && $status!='rejected') throw new HttpException(255, 'Invalid payment status', 16);
+
+        $payment = OutgoingPayment::find()->where(['id' => $payment_id])->one();
+        if (empty($payment)) throw new HttpException(255, 'Payment not found', 5);
+        
+        $user_id = $this->user_id;
+
+        $group = Groups::find()->where(['id' => $payment->group_id])->one();
+        if (empty($group)) throw new HttpException(255, 'Group not found', 5);
+
+        //check if user is an chairperson of the group
+        $group_member = GroupMembers::find()->where(['group_id' => $payment->group_id, 'user_id' => $user_id])->one();
+        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
+
+        if ($group_member->role!= 'chairperson') throw new HttpException(255, 'You are not a chairperson of this group', 13);
+
+        $payment->approver_two = 1; //setting to true
+        $payment->updated_at = date('Y-m-d H:i:s');
+        if ($status =='approved'){
+            $payment->status = "Approved"; //to be used by engine to make transfer
+        }
+        else {
+            $payment->status = $status;
+        }
+        if($payment->save()){
+            if ($status == 'approved'){
+
+                $current_user = User::find()->where(['id' => $this->user_id])->one();
+                $group_owner = User::find()->where(['id' => $group->created_by])->one();
+                $package = Packages::find()->where(['id' => $group_owner->package_id])->one();
+                //genereate notification
+                $params = [
+                    'user_id' => $this->user_id,
+                    'user_name' => $current_user->name,
+                    'group_name' => $group->name,
+                    'amount'=> $payment->amount,
+                    'reason' => $payment->reason,
+                    'group_id' => $group->id,
+                    'role' => $group_member->role,
+                    'lang' => $group_owner->language,
+                    'type' => $package->notification_support,
+                    'process' => 'Withdraw Final Approval',
+                ];
+
+                $record_notification = Helper::generateNotification($params);
+
+            }
+            else if ($status =='rejected'){
+                $current_user = User::find()->where(['id' => $this->user_id])->one();
+                $group_owner = User::find()->where(['id' => $group->created_by])->one();
+                $package = Packages::find()->where(['id' => $group_owner->package_id])->one();
+                //genereate notification
+                $params = [
+                    'user_id' => $this->user_id,
+                    'user_name' => $current_user->name,
+                    'group_name' => $group->name,
+                    'amount'=> $payment->amount,
+                    'reason' => $payment->reason,
+                    'group_id' => $group->id,
+                    'role' => $group_member->role,
+                    'lang' => $group_owner->language,
+                    'type' => $package->notification_support,
+                    'process' => 'Withdraw Rejected',
+                ];
+
+                $record_notification = Helper::generateNotification($params);   
+            }
+
+            $response = [
+               'success' => true,
+                'code' => 0,
+               'message' => 'Payment'.$status.'successfully',
+            ];
+
+            return $response;
+        }
     }
 
     # Payment schedule
@@ -1635,6 +2352,29 @@ class ServiceController extends Controller
 
         return $response;
     }
+    # Payment schedule
+    public function actionMyContributionSchedule(){
+        $user_id = $this->user_id;
+
+        $contribution_schedules = ContributionSchedule::find()
+            ->select(['contribution_schedule.*', 'groups.name as group_name'])
+            ->leftJoin('groups', 'groups.id = contribution_schedule.group_id')
+            ->where(['user_id' => $user_id])
+            ->orderBy(['due_date' => SORT_ASC])
+            //->groupBy(['group_id', 'contribution_schedule.id', 'contribution_schedule.user_id', 'contribution_schedule.amount', 'contribution_schedule.due_date', 'contribution_schedule.round_number', 'contribution_schedule.is_paid', 'contribution_schedule.paid_at', 'groups.name'])
+            ->asArray()
+            ->all();
+
+        $response = [
+            'success' => true,
+            'code' => 0,
+            'message' => 'Contribution schedule fetched successfully',
+            'data' => $contribution_schedules
+        ];
+
+        return $response;
+    }
+
 
     # Change Password
     public function actionChangePassword(){
@@ -1720,24 +2460,37 @@ class ServiceController extends Controller
 
     # Mark Notification as read
     public function actionNotificationRead(){
-        Yii::error("*************************************** Mark Notification as read ************************");
-        Yii::error(Yii::$app->request->post());
-        Yii::error("*************************************** end Mark Notification as read ************************");
-        $notification_id = Yii::$app->request->post('notification_id');
-        if (empty($notification_id)) throw new HttpException(255, 'Notification ID is required', 01);
-
-        $notification = NotificationRecipient::find()->where(['id' => $notification_id])->one();
-        if (empty($notification)) throw new HttpException(255, 'Notification not found', 5);
-
-        $notification->read_at = date('Y-m-d H:i:s');
-        if ($notification->save()) {
-            return [
-                'success' => true,  
-                'code' => 0,
-                'message' => 'Notification marked as read'
-            ];
+        $request = Yii::$app->request->post();
+        $notificationIds = [];
+    
+        // Support both single and multiple IDs
+        if (!empty($request['notification_id'])) {
+            $notificationIds = [(int)$request['notification_id']];
+        } elseif (!empty($request['notification_ids']) && is_array($request['notification_ids'])) {
+            $notificationIds = array_map('intval', $request['notification_ids']);
+        } else {
+            throw new HttpException(400, 'Notification ID(s) are required');
         }
-        else throw new HttpException(255, 'Failed to mark notification as read', 9);    
+    
+        $notifications = NotificationRecipient::find()->where(['id' => $notificationIds])->all();
+    
+        if (empty($notifications)) {
+            throw new HttpException(404, 'No notifications found for the given ID(s)');
+        }
+    
+        $updated = 0;
+        foreach ($notifications as $notification) {
+            $notification->read_at = date('Y-m-d H:i:s');
+            if ($notification->save()) {
+                $updated++;
+            }
+        }
+    
+        return [
+            'success' => true,
+            'code' => 0,
+            'message' => "$updated notification(s) marked as read"
+        ];   
     }
 
     # GET UNREAD NOTIFICATIONS
@@ -1752,5 +2505,488 @@ class ServiceController extends Controller
 
         return $response;
     }
+
+    # Add Configure Shares
+    public function actionConfigureShares(){
+        $group_id = Yii::$app->request->post('group_id');
+        if (empty($group_id)) throw new HttpException(255, 'Group id is required', 01);
+
+        $share_price = Yii::$app->request->post('share_price');
+        if (empty($share_price)) throw new HttpException(255, 'Share price is required', 01);
+
+        $max_shares_per_member = Yii::$app->request->post('max_shares_per_member');
+        $allow_selling = Yii::$app->request->post('allow_selling');  // can be 0 or 1
+        if (empty($allow_selling)) {
+            $allow_selling = 0;
+        }
+        else if (!in_array($allow_selling, [0,1])) throw new HttpException(255, 'Allow selling is invalid', 01);
+        $buy_period_start = Yii::$app->request->post('buy_period_start');
+        if (empty($buy_period_start)) throw new HttpException(255, 'Buy period start is required', 01);
+        $buy_period_end = Yii::$app->request->post('buy_period_end');
+
+        //find the group
+        $group = Groups::find()->where(['id'=> $group_id])->one();
+        if (empty($group)) throw new HttpException(255, 'Group not found', 5);
+
+        //check if the group is kikoba
+        if ($group->type != 'Kikoba') throw new HttpException(255, 'Group is not kikoba', 13);
+
+        //check if the current user is group admin
+        $group_member = GroupMembers::find()->where(['group_id'=> $group_id, 'user_id'=> $this->user_id])->one();
+        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
+
+        if ($group_member->role!= 'admin') throw new HttpException(255, 'You are not an admin of this group', 13);
+
+        $model = SharesConfig::find()->where(['group_id'=> $group_id])->one();
+        if (!empty($model)) throw new HttpException(255, 'Shares already configured', 13);
+
+        if (empty($model)) {
+            $model = new SharesConfig();
+            $model->group_id = $group_id;
+            $model->share_price = $share_price;
+            $model->max_shares_per_member = $max_shares_per_member;
+            $model->allow_selling = $allow_selling;
+            $model->buy_period_start = $buy_period_start;
+            $model->buy_period_end = $buy_period_end;
+            if ($model->save()) {
+                $response = [
+                   'success'=> true,
+                    'code'=> 200,
+                   'message'=> 'Values saved successful'
+                ]; 
+
+                return $response;
+            }
+            else {
+                Yii::error("*************************************** Error saving Shares ************************");
+                Yii::error(json_encode($model->errors));
+                Yii::error("*************************************** end Error saving Shares ************************");
+                throw new HttpException(255, 'Failed to record Share value', 04);
+            }
+        }   
+    }
+
+    # Update Shares config
+    public function actionUpdateSharesConfig(){
+        $group_id = Yii::$app->request->post('group_id');
+        if (empty($group_id)) throw new HttpException(255, 'Group id is required', 01);
+        $share_price = Yii::$app->request->post('share_price');
+        $max_shares_per_member = Yii::$app->request->post('max_shares_per_member');
+        $allow_selling = Yii::$app->request->post('allow_selling');  // can be 0 or 1
+        $buy_period_start = Yii::$app->request->post('buy_period_start');
+        $buy_period_end = Yii::$app->request->post('buy_period_end');
+
+        //check if any field has been passed in the request
+        if (empty($share_price) && empty($max_shares_per_member) && empty($allow_selling) && empty($buy_period_start) && empty($buy_period_end)) throw new HttpException(255, 'No fields passed', 01);
+
+        //find the group
+        $group = Groups::find()->where(['id'=> $group_id])->one();
+        if (empty($group)) throw new HttpException(255, 'Group not found', 5);
+
+        //check if the group is kikoba
+        if ($group->type!= 'Kikoba') throw new HttpException(255, 'Group is not kikoba', 13);
+
+
+        //check if the current user is group admin
+        $group_member = GroupMembers::find()->where(['group_id'=> $group_id, 'user_id'=> $this->user_id])->one();
+        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
+
+        if ($group_member->role!= 'admin') throw new HttpException(255, 'You are not an admin of this group', 13);
+
+        $model = SharesConfig::find()->where(['group_id'=> $group_id])->one();
+        if (empty($model)) throw new HttpException(255, 'Shares not configured', 13);
+
+        if (!empty($share_price)) $model->share_price = $share_price;
+        if (!empty($max_shares_per_member)) $model->max_shares_per_member = $max_shares_per_member;
+        if (!empty($allow_selling)) $model->allow_selling = $allow_selling;
+        if (!empty($buy_period_start)) $model->buy_period_start = $buy_period_start;
+        if (!empty($buy_period_end)) $model->buy_period_end = $buy_period_end;
+
+        if ($model->save()) {
+            $response = [
+              'success'=> true,
+                'code'=> 200,
+             'message'=> 'Values updated successful' 
+            ];
+            
+            return $response;
+        }
+        else {
+            Yii::error("*************************************** Error updating Shares ************************");   
+            Yii::error(json_encode($model->errors));
+            Yii::error("*************************************** end Error updating Shares ************************");
+            throw new HttpException(255, 'Failed to update Share value', 04);
+        }
+    }
+
+    # Get Shares Config
+    public function actionGetSharesConfig(){
+        $group_id = Yii::$app->request->post('group_id');
+        if (empty($group_id)) throw new HttpException(255, 'Group id is required', 01); 
+        
+        //find the group
+        $group = Groups::find()->where(['id'=> $group_id])->one();
+        if (empty($group)) throw new HttpException(255, 'Group not found', 5);
+
+        //check if the group is kikoba
+        if ($group->type!= 'Kikoba') throw new HttpException(255, 'Group is not kikoba', 13);
+
+        //check if the current user is group admin
+        $group_member = GroupMembers::find()->where(['group_id'=> $group_id, 'user_id'=> $this->user_id])->one();
+        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
+
+        $model = SharesConfig::find()->where(['group_id'=> $group_id])->one();
+        if (empty($model)) throw new HttpException(255, 'Shares not configured', 13);
+
+        $response = [
+            'success'=> true,
+            'code'=> 200,
+            'message'=> 'Shares fetched successful',
+            'data'=> $model
+        ];
+
+        return $response;
+    }
+
+    # Shares Bought
+    public function actionSharesBought(){
+        $group_id = Yii::$app->request->post('group_id');
+        if (empty($group_id)) throw new HttpException(255, 'Group id is required', 01); 
+
+        //find group
+        $group = Groups::find()->where(['id' => $group_id])->one();
+        if (empty($group)) throw new HttpException(255, 'Group not found', 5);
+
+        //check if the group is kikoba
+        if ($group->type!= 'Kikoba') throw new HttpException(255, 'Group is not kikoba', 13);
+
+        //check if the current user is group member
+        $group_member = GroupMembers::find()->where(['group_id'=> $group_id, 'user_id'=> $this->user_id])->one();
+        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
+
+        // sum shares bought grouped by members
+        $shares = Shares::find()
+        ->select(['member_id', 'users.name as member_name', 'groups.name as group_name', 'SUM(shares_bought) as total_shares_bought', 'SUM(amount_paid) as total_amount_paid'])
+        ->leftJoin('users', 'users.id = shares.member_id')
+        ->leftJoin('groups', 'groups.id = shares.group_id')
+        ->where(['group_id' => $group_id])
+        ->groupBy(['member_id'])
+        ->asArray()
+        ->all();
+
+        // calculate total shares bought in the group
+        $total_shares_bought = Shares::find()->where(['group_id' => $group_id])->sum('shares_bought');
+
+        // calculate percentage of shares each member has
+        foreach ($shares as &$share) {
+            $share['percent_of_shares'] = ($share['total_shares_bought'] / $total_shares_bought) * 100;
+        }
+
+        $config = SharesConfig::find()->where(['group_id'=> $group_id])->one();
+        if (empty($config)){
+            $response = [
+                'success' => false,
+                'code' => 700,
+                'role' => $group_member->role,
+                'message' => 'Shares not configured',
+                'data' => $shares
+                ];
+
+                // Yii::error("********************THIS IS RESPONSE RETURNED");
+                // Yii::error(json_encode($response));
+                // Yii::error("********************END RESPONSE RETURNED");
+            return $response;    
+        }
+
+        //get total shares bought
+        $total_shares_bought = Shares::find()->where(['group_id'=> $group_id])->sum('shares_bought');
+
+        //get total amount paid
+        $total_amount_paid = Shares::find()->where(['group_id'=> $group_id])->sum('amount_paid');
+
+        $response = [
+            'success' => true,
+            'code' => 200,
+            'role' => $group_member->role,
+            'message' => 'Shares fetched successfully',
+            'shares_config' => $config,
+            'total_shares_bought' => $total_shares_bought,
+            'total_amount_paid' => $total_amount_paid,
+            'data' => $shares
+        ];
+        // Yii::error("********************THIS IS RESPONSE RETURNED");
+        // Yii::error(json_encode($response));
+        // Yii::error("********************END RESPONSE RETURNED");
+        return $response;
+    }
+
+    # Buy Shares
+    public function actionBuyShare(){
+        $group_id = Yii::$app->request->post('group_id');
+        if (empty($group_id)) throw new HttpException(255, 'Group id is required', 01);
+        $amount = Yii::$app->request->post('amount');
+        if (empty($amount)) throw new HttpException(255, 'Amount is required', 01);
+        $amount = (int)$amount;
+        // check if amount is bellow limit
+        if ($amount < 1000) throw new HttpException(255, 'Amount must be above 1000', 02);
+
+        $channel = Yii::$app->request->post('channel');
+        if (empty($channel)) throw new HttpException(255, 'Channel is required', 01);
+        $validChannel = Yii::$app->params['support_payment_channels'];
+        if (!in_array($channel, $validChannel)) {
+            throw new \Exception('Invalid channel');
+        }
+        $payer_msisdn = Yii::$app->request->post('msisdn');
+        if (empty($payer_msisdn)) throw new HttpException(255, 'Payer msisdn is required', 01);
+        //validate mobile 
+        $cus_mob = Yii::$app->helper->validateMobile($payer_msisdn);
+
+        if (!$cus_mob['success']) throw new HttpException(255, $cus_mob['message'], 02);
+
+        $payer_msisdn = $cus_mob['cus_mob'];
+
+        //validate channel
+        $validateChannel = Yii::$app->helper->validateChannel($payer_msisdn, $channel);
+        if (!$validateChannel['success']) throw new HttpException(255, $validateChannel['message'], 02);
+
+        //check if group exist
+        $group = Groups::find()->where(['id' => $group_id])->one();
+        if (empty($group)) throw new HttpException(255, 'Group not found', 5);
+
+        //check if group is kikoba
+        if ($group->type!= 'Kikoba') throw new HttpException(255, 'Group is not kikoba', 13);
+
+        //check if the current user is group member
+        $group_member = GroupMembers::find()->where(['group_id'=> $group_id, 'user_id'=> $this->user_id])->one();
+        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
+
+        //check if group has shares config
+        $shares_config = SharesConfig::find()->where(['group_id' => $group_id])->one();
+        if (empty($shares_config)) throw new HttpException(255, "the group has not set shares config", 13);
+
+        //check if the buy period has passed
+        $buy_period = $shares_config->buy_period_end;
+        if (!empty($buy_period)){
+            if (strtotime($buy_period) < time()) throw new HttpException(255, "the buy period has passed", 13);
+        }
+
+        //get share price
+        $shares_price = $shares_config->share_price;
+
+        //check if member has exceeded max shares per member
+        $max_shares_per_member = $shares_config->max_shares_per_member;
+
+        // check shares already bought
+        $total_shares_bought = Shares::find()->where(['group_id' => $group_id])->sum('shares_bought') ?? 0;
+
+        // get remaining shares to be bought
+        $remaining_shares = 100 - $total_shares_bought;
+
+        // check if the user has already bought shares
+        $user_shares = Shares::find()->where(['group_id' => $group_id, 'member_id' => $this->user_id])->sum('shares_bought')?? 0;
+
+        // check to get the amount of shares remain for member to buy
+        $remaining_shares_for_member = $max_shares_per_member - $user_shares;
+
+        //get shares to be bought
+        $shares_to_be_bought = $amount / $shares_price;
+
+        if ($shares_to_be_bought > $remaining_shares_for_member) throw new HttpException(255, 'You have exceeded your max shares per member remaining shares you can buy is: ' .$remaining_shares_for_member, 13);
+
+        
+        // check exceed max shares
+        if ($remaining_shares < $shares_to_be_bought) throw new HttpException(255, 'Shares limit exceeded', 13);
+
+        //TODO:: perform push payment
+        //$type = 'Buying Share'; 
+        // $initiatePush = Yii::$app->helper->pushPayment($payer_msisdn, $amount, $channel, $this->user_id, group_id, $type);
+
+        // if ($initiatePush['success']){
+        //     $response = [
+        //         'success' => true,
+        //         'message' => 'Payment initiated successfully',
+        //     ];
+        // }
+        // else{
+        //     $response = [
+        //         'success' => false,
+        //         'message' => 'Payment failed',
+        //     ];
+        // }
+        // return $response;
+
+        //TODO:: FOR TESTING 
+            $trans_ref = 'Test'. time(); 
+
+            $model = new Payments();
+            $model->group_id = $group_id;
+            $model->user_id = $this->user_id;;
+            $model->reference = $trans_ref;
+            $model->amount = $amount;
+            $model->payment_date = date("Y-m-d H:i:s");
+            $model->payment_method = 'Selcom';
+            $model->status = 'verified';
+            $model->payment_for = 'Buying Shares';
+            $model->save(false);
+
+            //generate notification
+            $login_user_details = User::find()->where(['id' => $this->user_id])->one();
+            //get group owner package details
+            $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
+            if ($package['success']) {
+                $params = [
+                    'user_id' => $this->user_id,
+                    'user_name' => $this->login_user_name,
+                    'lang' => $login_user_details->language,
+                    'type' => $package->notification_support,
+                    'group_id' => $group_id,
+                    'group_type' => 'Kikoba',
+                    'group_name' => $group->name,
+                    'process' => 'Buy Share',
+                ];
+
+                $record_notification = Helper::generateNotification($params);
+            }
+            
+            
+
+        ///
+    
+        $model = new Shares();
+        $model->group_id = $group_id;
+        $model->member_id = $this->user_id;
+        $model->amount_paid = $amount;
+        $model->shares_bought = $shares_to_be_bought;
+        $model->bought_at = date('Y-m-d H:i:s');
+        if ($model->save()) {
+            $response = [
+                'success' => true,
+                'code' => 0,
+                'message' => 'Shares bought successfully',
+                'data' => [
+                    'shares_bought' => $shares_to_be_bought,
+                    //'extra_amount' => $extra_amount
+                ]
+            ]; 
+
+            return $response;
+        }
+        else{
+            Yii::error("*************************************** Error buying Shares ************************");
+            Yii::error(json_encode($model->errors));
+            Yii::error("*************************************** end Error buying Shares ************************");
+            throw new HttpException(255, 'Failed to buy shares', 04);
+        }
+
+        //}
+    }
+    
+    # Create request to send money to member
+    public function actionSendMoneyRequest(){
+        $group_id = Yii::$app->request->post('group_id');
+        if (empty($group_id)) throw new HttpException(255, 'Group id is required', 01);
+        $amount = Yii::$app->request->post('amount');
+        if (empty($amount)) throw new HttpException(255, 'Amount is required', 01);
+        $amount = (int)$amount;
+        $reason = Yii::$app->request->post('reason');
+        if (empty($reason)) throw new HttpException(255, 'Reason is required', 01);
+        $recipient_id = Yii::$app->request->post('recipient_id');  //member id to receive money
+        if (empty($recipient_id)) throw new HttpException(255, 'Recipient id is required', 01);
+
+        //check if group exist
+        $group = Groups::find()->where(['id' => $group_id])->one();
+        if (empty($group)) throw new HttpException(255, 'Group not found', 5);
+
+        //check if current user is group member of the group
+        $group_member = GroupMembers::find()->where(['group_id'=> $group_id, 'user_id'=> $this->user_id])->one();
+        if (empty($group_member)) throw new HttpException(255, 'You are not a member of this group', 13);
+
+        //check if recipient is group member of the group
+        $recipient_member = GroupMembers::find()->where(['group_id'=> $group_id, 'user_id'=> $recipient_id])->one();
+        if (empty($recipient_member)) throw new HttpException(255, 'Recipient is not a member of this group', 13);
+
+        //check if current user is the admin for the group
+        if ($group_member->role != 'admin') throw new HttpException(255, 'You are not an admin of this group', 13);
+
+        //check if the amount is valid
+        if ($amount < 5000) throw new HttpException(255, 'Amount is too low', 13);
+
+        //check if the group has this amount in the group wallet
+        $groupAvailableBalance = $this->getGroupAvailableBalance($group_id);
+        Yii::error("Available Amount: ". $groupAvailableBalance);
+
+        if ($amount > $groupAvailableBalance) throw new HttpException(255, 'Group does not have this amount in the group wallet', 13);
+
+        //create request
+        $model = new OutgoingPayment();
+        $model->amount = $amount;
+        $model->group_id = $group_id;
+        $model->recipient_id = $recipient_id;
+        $model->reason = $reason;
+        $model->created_at = date('Y-m-d H:i:s');
+        $model->created_by = $this->user_id;
+        $model->status = 'pending';
+        if ($model->save()) {
+
+            $current_user = User::find()->where(['id' => $this->user_id])->one();
+            $group_owner = User::find()->where(['id' => $group->created_by])->one();
+            $package = Packages::find()->where(['id' => $group_owner->package_id])->one();
+            //generate notification
+            $params = [
+                'user_id' => $this->user_id,
+                'user_name' => $current_user->name,
+                'group_name' => $group->name,
+                'amount'=> $amount,
+                'reason' => $reason,
+                'group_id' => $group->id,
+                'role' => $group_member->role,
+                'lang' => $group_owner->language,
+                'type' => $package->notification_support,
+                'process' => 'Withdraw Request',
+            ];
+
+            $record_notification = Helper::generateNotification($params);
+            $response = [
+            'success' => true,
+                'code' => 0,
+            'message' => 'Request created successfully',
+                'data' => $model
+            ];
+
+            return $response;
+            
+        }
+        else{
+            Yii::error("*************************************** Error creating request ************************");
+            Yii::error(json_encode($model->errors));
+            Yii::error("*************************************** end Error creating request ************************");
+            throw new HttpException(255, 'Failed to create request', 04);
+        }
+    }
+
+
+    # Payment Callback
+    public function actionPaymentCallback(){
+
+    }
+
+    # group available balance
+    public function getGroupAvailableBalance($group_id){
+
+        $incomingPayment = Payments::find()
+            ->where(['group_id' => $group_id])
+            ->andWhere(['status' =>'verified'])
+            ->sum('amount')?? 0;
+        $outgoingPayment = OutgoingPayment::find()
+            ->where(['group_id' => $group_id])
+            ->andWhere(['status' =>'Approved'])
+            ->sum('amount')?? 0;
+        $balance = $incomingPayment - $outgoingPayment; 
+        
+        $available = $balance - 5000; // deduct 5000 for group security balance
+
+        return $available;
+    }
+
 }
  

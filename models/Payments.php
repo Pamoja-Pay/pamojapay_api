@@ -20,6 +20,7 @@ use yii\db\ActiveRecord;
  * @property string $payment_method
  * @property string $status
  * @property string $rejection_reason
+ * @property string $payment_for
  */
 class Payments extends ActiveRecord
 {

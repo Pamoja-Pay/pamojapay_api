@@ -101,6 +101,14 @@ return [
                 ],
                 [
                     'class' => 'yii\log\FileTarget',
+                    'levels' => ['info'],
+                    'logVars' => [],
+                    'categories' => ['payments'],
+                    'exportInterval' => 1,
+                    'logFile' => '@app/runtime/logs/payments.log',
+                ],
+                [
+                    'class' => 'yii\log\FileTarget',
                     'levels' => ['error', 'warning', 'info'],
                     'logVars' => [],
                     'categories' => ['admin_auth'],
@@ -147,8 +155,14 @@ return [
     ],
     'params' => [
         'sender_email' => 'njengatechs@zohomail.com',
+        'support_email' => 'magayajohnoffice@gmail.com',
         'jwt_key' => 'hkfdkshfkdhskfhdkhkfhskdfhs',
         'server_name' => 'Pamoja Pay',
-        'support_notifications' => ["push", "email", "sms", "push, email", "push, sms", "email, sms", "all"]
+        'support_notifications' => ["push", "email", "sms", "push, email", "push, sms", "email, sms", "all"],
+        'support_payment_channels' => ['TigoPesa', 'Mpesa', 'AirtelMoney'],
+
+        //Selcom
+        'api_name' => 'Selcom',
+        'api_key' => '863239448',
     ],
 ];

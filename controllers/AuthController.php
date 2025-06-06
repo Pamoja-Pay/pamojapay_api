@@ -135,9 +135,9 @@ class AuthController extends Controller
 
     # LOGIN
     public function actionLogin(){
-        Yii::error("*************************************** Login ************************");
-        Yii::error(Yii::$app->request->post());
-        Yii::error("*************************************** end Login ************************");
+        // Yii::error("*************************************** Login ************************");
+        // Yii::error(Yii::$app->request->post());
+        // Yii::error("*************************************** end Login ************************");
 
         $mobile = Yii::$app->request->post('phoneNumber');
         if (empty($mobile)) throw new HttpException(255, 'Mobile Number is required', 01);
@@ -182,6 +182,9 @@ class AuthController extends Controller
                     $user_payments = Payments::find()->where(['user_id' => $user['id'], 'status' => 'verified']) ->sum('amount');
                     //get group count
                     $group_count = GroupMembers::find()->where(['user_id' => $user['id']])->count();
+                    //get overdue schedules
+                    $overdue_schedules = Yii::$app->helper->overdueContributionsPerGroup($user['id']);
+
                     //get upcoming schedules
                     $upcoming_schedules = Yii::$app->helper->nextContributionsPerGroup($user['id']);
 
@@ -224,6 +227,7 @@ class AuthController extends Controller
                             'total_contributions' => $user_payments,
                             'group_count' => $group_count,
                             'upcoming_payments' => $upcoming_schedules,
+                            'overdue_payments' => $overdue_schedules,
                             'notifications' => $notification_count
                         ] 
                     ];

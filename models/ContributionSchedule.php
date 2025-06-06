@@ -16,6 +16,8 @@ use yii\db\ActiveRecord;
  * @property int $round_number
  * @property boolean $is_paid
  * @property string $paid_at
+ * @property float $paid_amount
+ * @property float $remain_amount
  */
 class ContributionSchedule extends ActiveRecord
 {
