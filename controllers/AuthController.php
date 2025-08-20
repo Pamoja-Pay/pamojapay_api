@@ -220,7 +220,7 @@ class AuthController extends Controller
                             'token' => $jwt,
                             'name' => $user->name,
                             'email' => $user->email,
-                            'phoneNumber' => $user->phone_number,
+                            'phone_number' => $user->phone_number,
                             'profile_picture' => $user->profile_picture,
                             'language' => $user->language, 
                             'bio' => $user->biometric_enabled,
@@ -237,7 +237,7 @@ class AuthController extends Controller
             }
             else throw new HttpException(255, 'Wrong Username or password', 5);
         }
-        else throw new HttpException(255, 'Wrong Username or password', 5);
+        else throw new HttpException(255, 'User not Found', 5);
     }
 
     # FORGOT PASSWORD

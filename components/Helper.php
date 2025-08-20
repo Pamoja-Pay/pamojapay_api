@@ -192,7 +192,7 @@ class Helper extends Component
     
             $groupStartDate = new DateTime($contribution->start_date);
             $endDate = (clone $groupStartDate)->add(new DateInterval('P3M')); // Generate for 3 months
-    
+
             $interval = match (strtolower($contribution->frequency)) {
                 'weekly' => new DateInterval('P7D'),
                 'monthly' => new DateInterval('P1M'),
@@ -212,6 +212,94 @@ class Helper extends Component
     
             foreach ($members as $member) {
                 $joinedAt = new DateTime($member->joined_at ?? $groupStartDate->format('Y-m-d'));
+    
+                foreach ($scheduleRounds as $dueDate => $roundNumber) {
+                    $due = new DateTime($dueDate);
+                    if ($due >= $joinedAt) {
+                        // Check if schedule already exists for this member, group, and due_date
+                        $exists = (new \yii\db\Query())
+                            ->from('contribution_schedule')
+                            ->where([
+                                'group_id' => $groupId,
+                                'user_id' => $member->user_id,
+                                'due_date' => $dueDate,
+                            ])
+                            ->exists();
+    
+                        if (!$exists) {
+                            Yii::$app->db->createCommand()->insert('contribution_schedule', [
+                                'group_id' => $groupId,
+                                'user_id' => $member->user_id,
+                                'due_date' => $dueDate,
+                                'amount' => $contribution->amount,
+                                'round_number' => $roundNumber,
+                                'is_paid' => 0,
+                                'paid_at' => null,
+                                'paid_amount' => 0,
+                                'remain_amount' => $contribution->amount,
+                            ])->execute();
+                        }
+    
+                        //TODO:: check if the schedule created is about to run out
+                    }
+                }
+            }
+    
+            return true;
+        }
+        catch (Exception $ex){
+            Yii::error("Failed to genereate contribution schedule due to: ". json_encode($ex->getMessage()));
+            return false;
+        }
+        
+    }
+
+    public static function generateContributionSchedule2($groupId)
+    {
+        try{
+            $group = Groups::findOne($groupId);
+            if (!$group || !in_array($group->type, ['Kikoba', 'Mchezo'])) {
+                return false;
+            }
+    
+            $contribution = Contributions::find()->where(['group_id' => $groupId])->one();
+            if (!$contribution) return false;
+
+            $latestDue = ContributionSchedule::find()
+                ->where(['group_id' => $groupId])
+                ->orderBy(['due_date' => SORT_DESC])
+                ->limit(1)
+                ->one();
+    
+            $members = GroupMembers::find()->where(['group_id' => $groupId])->all();
+            if (empty($members)) return false;
+    
+            //$groupStartDate = new DateTime($contribution->start_date);
+            //get todays date
+            $today = new DateTime();
+
+            $endDate = (clone $today)->add(new DateInterval('P3M')); // Generate for 3 months
+            
+            $interval = match (strtolower($contribution->frequency)) {
+                'weekly' => new DateInterval('P7D'),
+                'monthly' => new DateInterval('P1M'),
+                'daily' => new DateInterval('P1D'),
+                default => null
+            };
+    
+            if (!$interval) return false;
+    
+            $scheduleRounds = []; // keep track of round number for each date
+    
+            // Generate dates and assign round numbers
+            $round = $latestDue->round_number +1;
+
+            for ($date = clone $today; $date <= $endDate; $date->add($interval), $round++) {
+                $scheduleRounds[$date->format('Y-m-d')] = $round;
+            }
+    
+            foreach ($members as $member) {
+                $joinedAt = new DateTime($member->joined_at ?? $today->format('Y-m-d'));
     
                 foreach ($scheduleRounds as $dueDate => $roundNumber) {
                     $due = new DateTime($dueDate);

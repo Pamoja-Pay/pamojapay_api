@@ -63,6 +63,20 @@ return [
             'password' => 'ag6h96uwjt',
             'charset' => 'utf8',
         ],
+        // 'db' => [    //local
+        //     'class' => 'yii\db\Connection',
+        //     'dsn' => 'mysql:host=localhost;dbname=pamojapay_db-353039386bbe',
+        //     'username' => 'root',
+        //     'password' => '',
+        //     'charset' => 'utf8',
+        // ],
+        // 'db' => [    //new dev db
+        //     'class' => 'yii\db\Connection',
+        //     'dsn' => 'mysql:host=localhost;dbname=pamojapay_db-353039386bbe',
+        //     'username' => 'root',
+        //     'password' => 'Bongoflava@01',
+        //     'charset' => 'utf8',
+        // ],
         'log' => [
             'traceLevel' => YII_DEBUG ? 3 : 0,
             'targets' => [
@@ -160,6 +174,7 @@ return [
         'server_name' => 'Pamoja Pay',
         'support_notifications' => ["push", "email", "sms", "push, email", "push, sms", "email, sms", "all"],
         'support_payment_channels' => ['TigoPesa', 'Mpesa', 'AirtelMoney'],
+        'valid_contribution_schedules' => ['daily', 'weekly', 'monthly', 'custom'],
 
         //Selcom
         'api_name' => 'Selcom',

@@ -6,20 +6,22 @@ return [
     'bootstrap' => ['log'],
     'controllerNamespace' => 'app\commands',
     'components' => [
-        'db' => [
-            // 'class' => 'yii\db\Connection',
-            // 'dsn' => 'mysql:host=localhost;dbname=minick_store_db',
-            // 'username' => 'root',
-            // 'password' => 'Bongoflava@01',
-            // 'charset' => 'utf8',
+        // 'db' => [ //dev db
+        //     'class' => 'yii\db\Connection',
+        //     'dsn' => 'mysql:host=localhost;dbname=pamojapay_db-353039386bbe',
+        //     'username' => 'root',
+        //     'password' => 'Bongoflava@01',
+        //     'charset' => 'utf8',
+        // ],
 
+        'db' => [ //live
             'class' => 'yii\db\Connection',
-            //'driverName' => 'sqlsrv',
-            'dsn' => 'sqlsrv:Server=DESKTOP-4QP3S7A\NEWSERVER;Database=pamojapay_db',
-            'username' => 'sys_user',
-            'password' => 'sys@2019',
+            'dsn' => 'mysql:host=mysql.us.stackcp.com:61402;dbname=pamojapay_db-353039386bbe',
+            'username' => 'pamojapay_db-353039386bbe',
+            'password' => 'ag6h96uwjt',
             'charset' => 'utf8',
         ],
+
         'log' => [
             'traceLevel' => YII_DEBUG ? 3 : 0,
             'targets' => [
