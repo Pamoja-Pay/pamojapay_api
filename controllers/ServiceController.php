@@ -798,9 +798,9 @@ class ServiceController extends Controller
         if (empty($group_name)) throw new HttpException(255, 'Group name is required', 01);
 
         $groups = Groups::find()
-            ->leftJoin('group_Members', 'group_Members.group_id = groups.id')        
+            ->leftJoin('group_members', 'group_members.group_id = groups.id')        
             ->where(['like', 'name', $group_name])
-            ->andWhere(['group_Members.user_id' => $this->user_id])
+            ->andWhere(['group_members.user_id' => $this->user_id])
             ->all();
             
         if (empty($groups)) throw new HttpException(255, 'Group not found', 5);
@@ -858,27 +858,27 @@ class ServiceController extends Controller
         
         $group_Members = GroupMembers::find()
             ->select([
-                'group_Members.id',
-                'group_Members.user_id',
-                'group_Members.group_id',
-                'group_Members.role',
-                'group_Members.is_active',
-                'group_Members.joined_at',
+                'group_members.id',
+                'group_members.user_id',
+                'group_members.group_id',
+                'group_members.role',
+                'group_members.is_active',
+                'group_members.joined_at',
                 'users.name as user_name',
                 'users.profile_picture as profile_picture',
                 'groups.type as group_type',
             ])
-            ->leftJoin('users', 'users.id = group_Members.user_id')
-            ->leftJoin('groups', 'groups.id = group_Members.group_id')
-            ->where(['group_Members.group_id' => $group_id])
-            ->orderBy(['group_Members.joined_at' => SORT_DESC])
+            ->leftJoin('users', 'users.id = group_members.user_id')
+            ->leftJoin('groups', 'groups.id = group_members.group_id')
+            ->where(['group_members.group_id' => $group_id])
+            ->orderBy(['group_embers.joined_at' => SORT_DESC])
             ->asArray()
             ->all();
 
         $total_Members = GroupMembers::find()
-            ->leftJoin('users', 'users.id = group_Members.user_id')
-            ->leftJoin('groups', 'groups.id = group_Members.group_id')
-            ->where(['group_Members.group_id' => $group_id])
+            ->leftJoin('users', 'users.id = group_members.user_id')
+            ->leftJoin('groups', 'groups.id = group_members.group_id')
+            ->where(['group_members.group_id' => $group_id])
             ->count();  
 
         //get user payments
@@ -2464,8 +2464,8 @@ class ServiceController extends Controller
 
         $groups = GroupMembers::find()
             ->select(['groups.id as group_id', 'groups.name as group_name', 'groups.type as group_type'])
-            ->leftJoin('groups', 'groups.id = group_Members.group_id')
-            ->where(['group_Members.user_id' => $user_id])
+            ->leftJoin('groups', 'groups.id = group_members.group_id')
+            ->where(['group_members.user_id' => $user_id])
             ->asArray() // <-- this line solves your issue
             ->all();
 
