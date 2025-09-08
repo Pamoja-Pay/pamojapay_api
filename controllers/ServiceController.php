@@ -329,9 +329,9 @@ class ServiceController extends Controller
     # Add user to group
     public function actionAddMember(){
         //debug
-        $datareceived = Yii::$app->request->data();
+        $datareceived = Yii::$app->request->post();
         # Add user to group
-        Yii::$app->helper->sendMail("Add Member Error", $datareceived, 'njengatechs@zohomail.com', 'magayajohnoffice@gmail.com');
+        Yii::$app->helper->sendMail("Add Member Error", json_encode($datareceived), 'njengatechs@zohomail.com', 'magayajohnoffice@gmail.com');
 
         $group_id = Yii::$app->request->post('group_id');
         if (empty($group_id)) throw new HttpException(255, 'Group ID is required', 01);
