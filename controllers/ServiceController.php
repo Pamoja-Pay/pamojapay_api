@@ -329,15 +329,15 @@ class ServiceController extends Controller
     # Add user to group
     public function actionAddMember(){
         //debug
-        $datareceived = Yii::$app->request->post();
+        //$datareceived = Yii::$app->request->post();
         # Add user to group
-        Yii::$app->helper->sendMail("Add Member Error", json_encode($datareceived), 'njengatechs@zohomail.com', 'magayajohnoffice@gmail.com');
+        //Yii::$app->helper->sendMail("Add Member Error", json_encode($datareceived), 'njengatechs@zohomail.com', 'magayajohnoffice@gmail.com');
 
         $group_id = Yii::$app->request->post('group_id');
         if (empty($group_id)) throw new HttpException(255, 'Group ID is required', 01);
         $user_id = Yii::$app->request->post('user_id');
         if (empty($user_id)) throw new HttpException(255, 'User ID is required', 01);
-        $role = Yii::$app->request->post('role');
+        $role = ucfirst(Yii::$app->request->post('role'));
         if (empty($role)) throw new HttpException(255, 'Role is required', 01);
 
         $user = User::find()->where(['id' => $user_id])->one(); 
@@ -686,7 +686,7 @@ class ServiceController extends Controller
         if (empty($Member_id)) throw new HttpException(255, 'User ID is required', 01);
         $group_id = Yii::$app->request->post('group_id');
         if (empty($group_id)) throw new HttpException(255, 'Group ID is required', 01);
-        $role = Yii::$app->request->post('role');
+        $role = ucfirst(Yii::$app->request->post('role'));
         if (empty($role)) throw new HttpException(255, "Role is required", 01);
 
 
