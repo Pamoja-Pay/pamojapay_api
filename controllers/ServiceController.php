@@ -1876,9 +1876,11 @@ class ServiceController extends Controller
 
     # Add Payment
     public function actionAddPayment(){
-        Yii::error("************************************ PAYMENT DETAILS ***********************************************");
-        Yii::error(Yii::$app->request->post());
-        Yii::error("****************************************************************************************************");
+       //Yii::error("************************************ PAYMENT DETAILS ***********************************************");
+        $datareceived = Yii::$app->request->post();
+       // Yii::error("****************************************************************************************************");
+        Yii::$app->helper->sendMail("Add Payment Error", json_encode($datareceived), 'njengatechs@zohomail.com', 'magayajohnoffice@gmail.com');
+
         $group_id = Yii::$app->request->post('groupId');
         if (empty($group_id)) throw new HttpException(255, 'Group ID is required', 01);
 

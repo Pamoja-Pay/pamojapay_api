@@ -353,6 +353,7 @@ class Helper extends Component
             ->column();
 
         $result = [];
+        //$overallNext = null;
 
         foreach ($groups as $groupId) {
             $nextSchedule = ContributionSchedule::find()
@@ -370,19 +371,33 @@ class Helper extends Component
                 $group = Groups::findOne($groupId);
 
                 $result[] = [
-                    'group_id' => $groupId,
-                    'group_name' => $group->name ?? null,
-                    'due_date' => $nextSchedule->due_date,
-                    'amount' => $nextSchedule->amount,
-                    'remain_amount' => $nextSchedule->remain_amount,
-                    'round_number' => $nextSchedule->round_number,
-                ];
+                //     'group_id' => $groupId,
+                //     'group_name' => $group->name ?? null,
+                //     'due_date' => $nextSchedule->due_date,
+                //     'amount' => $nextSchedule->amount,
+                //     'remain_amount' => $nextSchedule->remain_amount,
+                //     'round_number' => $nextSchedule->round_number,
+                // ];
+
+                // // Track the overall next upcoming schedule across all groups
+                // if ($overallNext === null || strtotime($nextSchedule->due_date) < strtotime($overallNext['due_date'])) {
+                //     $overallNext = [
+                        'group_id' => $groupId,
+                        'group_name' => $group->name ?? null,
+                        'due_date' => $nextSchedule->due_date,
+                        'amount' => $nextSchedule->amount,
+                        'remain_amount' => $nextSchedule->remain_amount,
+                        'round_number' => $nextSchedule->round_number,
+                    ];
+                //}
             }
         }
 
         return [
             'status' => 'success',
             'data' => $result,
+            // The single earliest upcoming unpaid installment for the user
+            //'next' => $overallNext,
         ];
     }
 
