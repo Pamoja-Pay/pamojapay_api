@@ -871,7 +871,7 @@ class ServiceController extends Controller
             ->leftJoin('users', 'users.id = group_members.user_id')
             ->leftJoin('groups', 'groups.id = group_members.group_id')
             ->where(['group_members.group_id' => $group_id])
-            ->orderBy(['group_embers.joined_at' => SORT_DESC])
+            ->orderBy(['group_members.joined_at' => SORT_DESC])
             ->asArray()
             ->all();
 
