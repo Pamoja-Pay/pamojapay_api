@@ -395,7 +395,7 @@ class ServiceController extends Controller
         $package = Packages::findOne($package_id);
         if (empty($package)) throw new HttpException(255, 'Package not found',5);
 
-        $Member_limit = $package->Member_limit;
+        $Member_limit = $package->member_limit;
         $Member_count = GroupMembers::find()->where(['group_id' => $group_id])->count();
         if ($Member_count >= $Member_limit) throw new HttpException(255, "The Group has reach maximum number of Members", 14);
 
