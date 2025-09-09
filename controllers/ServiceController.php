@@ -627,6 +627,9 @@ class ServiceController extends Controller
         //$package = Packages::findOne($package_id);
 
         $package = Yii::$app->helper->getPackagebyGroupID($group_id);
+        if ($package['success']) {
+            $package_details = $package['package_details'];
+        }
 
         $user = User::findOne($this->user_id);
 
@@ -658,7 +661,7 @@ class ServiceController extends Controller
             'group_id' => $group->id,
             'role' => $group_Member->role,
             'lang' => $user->language,
-            'type' => $package->notification_support,
+            'type' => $package_details->notification_support,
             'process' => 'leaveGroup',
         ];
 
@@ -2031,6 +2034,9 @@ class ServiceController extends Controller
                 $payer_details = User::find()->where(['id' => $payer_id])->one();
                 //get group owner package details
                 $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
+                if ($package['success']) {
+                    $package_details = $package['package_details'];
+                }
                 $params = [
                     'user_id' => $this->user_id,
                     'user_name' => $payer_details->name,
@@ -2039,7 +2045,7 @@ class ServiceController extends Controller
                     'group_id' => $group->id,
                     'amount' => $amount,
                     'lang' => $payer_details->language,
-                    'type' => $package->notification_support,
+                    'type' => $package_details->notification_support,
                     'process' => 'approvedPayment',
                 ];
     
@@ -2102,6 +2108,9 @@ class ServiceController extends Controller
                 $payer_details = User::find()->where(['id' => $payer_id])->one();
                 //get group owner package details
                 $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
+                if ($package['success']) {
+                    $package_details = $package['package_details'];
+                }
                 $params = [
                     'user_id' => $this->user_id,
                     'user_name' => $payer_details->name,
@@ -2110,7 +2119,7 @@ class ServiceController extends Controller
                     'group_id' => $group->id,
                     'amount' => $amount,
                     'lang' => $payer_details->language,
-                    'type' => $package->notification_support,
+                    'type' => $package_details->notification_support,
                     'process' => 'approvedPayment',
                 ];
     
@@ -2144,11 +2153,12 @@ class ServiceController extends Controller
                 //get group owner package details
                 $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
                 if ($package['success']) {
+                    $package_details = $package['package_details'];
                     $params = [
                         'user_id' => $this->user_id,
                         'user_name' => $this->login_user_name,
                         'lang' => $login_user_details->language,
-                        'type' => $package->notification_support,
+                        'type' => $package_details->notification_support,
                         'group_id' => $group_id,
                         'group_type' => 'Kikoba',
                         'group_name' => $group->name,
@@ -2212,6 +2222,9 @@ class ServiceController extends Controller
                 $payer_details = User::find()->where(['id' => $payer_id])->one();
                 //get group owner package details
                 $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
+                if ($package['success']) {
+                    $package_details = $package['package_details'];
+                }
                 $params = [
                     'user_id' => $this->user_id,
                     'user_name' => $payer_details->name,
@@ -2220,7 +2233,7 @@ class ServiceController extends Controller
                     'group_id' => $group->id,
                     'amount' => $amount,
                     'lang' => $payer_details->language,
-                    'type' => $package->notification_support,
+                    'type' => $package_details->notification_support,
                     'process' => 'approvedPayment',
                 ];
     
@@ -2279,6 +2292,9 @@ class ServiceController extends Controller
                 $payer_details = User::find()->where(['id' => $payer_id])->one();
                 //get group owner package details
                 $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
+                if ($package['success']) {
+                    $package_details = $package['package_details'];
+                }
                 $params = [
                     'user_id' => $this->user_id,
                     'user_name' => $payer_details->name,
@@ -2287,7 +2303,7 @@ class ServiceController extends Controller
                     'group_id' => $group->id,
                     'amount' => $amount,
                     'lang' => $payer_details->language,
-                    'type' => $package->notification_support,
+                    'type' => $package_details->notification_support,
                     'process' => 'approvedPayment',
                 ];
     
@@ -3311,11 +3327,12 @@ class ServiceController extends Controller
             //get group owner package details
             $package  = Yii::$app->helper->getPackagebyGroupID($group_id);
             if ($package['success']) {
+                $package_details = $package['package_details'];
                 $params = [
                     'user_id' => $this->user_id,
                     'user_name' => $this->login_user_name,
                     'lang' => $login_user_details->language,
-                    'type' => $package->notification_support,
+                    'type' => $package_details->notification_support,
                     'group_id' => $group_id,
                     'group_type' => 'Kikoba',
                     'group_name' => $group->name,
