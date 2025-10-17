@@ -82,7 +82,7 @@ return [
                     //'levels' => ['error', 'warning','info'],
                     'levels' => ['error'],
                     'exportInterval' => 1,
-                    'logFile' => '@app/runtime/logs/app.log',
+                    'logFile' => '@app/runtime/logs/app-' . date('d-m-Y') . '.log',
                     'maxFileSize' => 1024 * 2,
                     'maxLogFiles' => 20,
                 ],
@@ -92,7 +92,7 @@ return [
                     'logVars' => [],
                     'categories' => ['custom_error'],
                     'exportInterval' => 1,
-                    'logFile' => '@app/runtime/logs/custom_error.log',
+                    'logFile' => '@app/runtime/logs/custom_error-' . date('d-m-Y') . '.log',
                 ],
                 [
                     'class' => 'yii\log\FileTarget',
@@ -100,7 +100,7 @@ return [
                     'logVars' => [],
                     'categories' => ['request'],
                     'exportInterval' => 1,
-                    'logFile' => '@app/runtime/logs/request.log',
+                    'logFile' => '@app/runtime/logs/request-' . date('d-m-Y') . '.log',
                 ],
                 [
                     'class' => 'yii\log\FileTarget',
@@ -108,7 +108,7 @@ return [
                     'logVars' => [],
                     'categories' => ['credentials'],
                     'exportInterval' => 1,
-                    'logFile' => '@app/runtime/logs/credentials.log',
+                    'logFile' => '@app/runtime/logs/credentials-' . date('d-m-Y') . '.log',
                 ],
                 [
                     'class' => 'yii\log\FileTarget',
@@ -116,7 +116,7 @@ return [
                     'logVars' => [],
                     'categories' => ['payments'],
                     'exportInterval' => 1,
-                    'logFile' => '@app/runtime/logs/payments.log',
+                    'logFile' => '@app/runtime/logs/payments-' . date('d-m-Y') . '.log',
                 ],
                 [
                     'class' => 'yii\log\FileTarget',
@@ -124,7 +124,7 @@ return [
                     'logVars' => [],
                     'categories' => ['admin_auth'],
                     'exportInterval' => 1,
-                    'logFile' => '@app/runtime/logs/admin_auth.log',
+                    'logFile' => '@app/runtime/logs/admin_auth-' . date('d-m-Y') . '.log',
                     'maxFileSize' => 1024 * 2,
                     'maxLogFiles' => 20,
                 ],
