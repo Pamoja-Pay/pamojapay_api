@@ -24,9 +24,11 @@ class PaymentGatewayController extends Controller
 
     public function beforeAction($action)
     {
+        Yii::error("Nipo Hapa SASA");
         $requestHandler = new RequestHandler();
         $auth = $requestHandler->validateRequest();
-
+        Yii::error("Kilichorudi AUth");
+        Yii::error($auth);
         if (!$auth['status']) {
             throw new HttpException(400, $auth['data']);
         }
@@ -37,6 +39,7 @@ class PaymentGatewayController extends Controller
     # Payment Callback
     public function actionPaymentCallback()
     {
+        Yii::error("Nimeingia huku kwenye Payment Callback***");
         $data = Yii::$app->request->post();
 
         if (empty($data)) {

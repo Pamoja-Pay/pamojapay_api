@@ -687,10 +687,10 @@ class Helper extends Component
             ->send();
             if ($response->isOk) {
                 $content = $response->getData();
-                Yii::error("This is the raw response Received From Pamoja External API");
-                Yii::error($content);
-                Yii::error("This is exctracted Message");
-                Yii::error($content['message']);
+                // Yii::error("This is the raw response Received From Pamoja External API");
+                // Yii::error($content);
+                // Yii::error("This is exctracted Message");
+                // Yii::error($content['message']);
 
                 $response = [
                     'success' => true,
@@ -724,9 +724,6 @@ class Helper extends Component
         }
     }
 
-    public function clickPesaUssdPushCallback($data){
-
-    }
 
     //                             # PAYMENT SECTION #
                         

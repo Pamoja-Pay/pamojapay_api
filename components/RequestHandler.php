@@ -15,6 +15,8 @@ class RequestHandler extends Component
 
     public function validateRequest(){
         try {
+
+            Yii::error("Nimeingia huku kwenye Verification Callback");
             $headers = Yii::$app->request->headers;
             $auth_header = $headers->get('Authorization');
             $service_name = $headers->get('X-Service-Name');
