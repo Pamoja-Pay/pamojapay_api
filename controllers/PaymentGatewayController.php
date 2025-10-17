@@ -24,11 +24,11 @@ class PaymentGatewayController extends Controller
 
     public function beforeAction($action)
     {
-        Yii::error("Nipo Hapa SASA");
+       // Yii::error("Nipo Hapa SASA");
         $requestHandler = new RequestHandler();
         $auth = $requestHandler->validateRequest();
-        Yii::error("Kilichorudi AUth");
-        Yii::error($auth);
+        // Yii::error("Kilichorudi AUth");
+        // Yii::error($auth);
         if (!$auth['status']) {
             throw new HttpException(400, $auth['data']);
         }
@@ -39,7 +39,7 @@ class PaymentGatewayController extends Controller
     # Payment Callback
     public function actionPaymentCallback()
     {
-        Yii::error("Nimeingia huku kwenye Payment Callback***");
+        //Yii::error("Nimeingia huku kwenye Payment Callback***");
         $data = Yii::$app->request->post();
 
         if (empty($data)) {
@@ -50,8 +50,7 @@ class PaymentGatewayController extends Controller
             ];
         }
 
-        // Make sure 'helper' component exists
-        Yii::$app->helper->paymentLogs('payment-callback', json_encode($data), 'Invalid Request');
+        Yii::$app->helper->paymentLogs('payment-callback', json_encode($data), 'Received Callback Data');
 
         // Check required fields
         $requiredFields = ['reference', 'status', 'message'];
