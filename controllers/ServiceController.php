@@ -919,6 +919,7 @@ class ServiceController extends Controller
             ->leftJoin('groups', 'groups.id = payments.group_id')
             ->leftJoin('users', 'users.id = payments.user_id')
             ->where(['group_id' => $group_id])
+            ->andWhere(['payments.status' => 'SUCCESS'])
             ->sum('payments.amount');
 
         $total_outgoing = OutgoingPayment::find()
@@ -926,6 +927,7 @@ class ServiceController extends Controller
             ->leftJoin('users', 'users.id = outgoing_payment.recipient_id')
             ->where(['group_id' => $group_id])
             ->andWhere(['outgoing_payment.status' => 'Approved'])
+            ->andWhere(['outgoing_payment.status' => 'SUCCESS'])
             ->sum('outgoing_payment.amount');
             
         $response = [
