@@ -59,10 +59,10 @@ class ServiceController extends Controller
         if ($auth['status'])
         {
             $user_data = $auth['data'];
-            $this->user_id = $user_data['user_id'];
-            $this->mobile = $user_data['mobile'];
-            $this->package_id = $user_data['package_id'];
-            $this->login_user_name = $user_data['name'];
+            $this->user_id = $user_data->user_id;
+            $this->mobile = $user_data->mobile;
+            $this->package_id = $user_data->package_id;
+            $this->login_user_name = $user_data->name;
 
             //log the activity of a user
             $user_id = $this->user_id;
