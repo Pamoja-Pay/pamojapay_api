@@ -21,6 +21,8 @@ use yii\db\ActiveRecord;
  * @property string $status
  * @property string $rejection_reason
  * @property string $payment_for
+ * @property string $updated_at
+ * @property string $remark
  */
 class Payments extends ActiveRecord
 {

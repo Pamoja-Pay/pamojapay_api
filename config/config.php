@@ -16,6 +16,9 @@ return [
         'helper' => [
             'class' => 'app\components\Helper',
         ],
+        'requestHandler' => [
+            'class' => 'app\components\RequestHandler',
+        ],
         'cache' => [
             'class' => 'yii\caching\FileCache',
         ],
@@ -56,7 +59,7 @@ return [
             'enableSession' => false,
             'loginUrl' => null
         ],
-        'db' => [
+        'db' => [  //live
             'class' => 'yii\db\Connection',
             'dsn' => 'mysql:host=localhost;dbname=pamoja_pay_db',
             'username' => 'minick',
@@ -65,18 +68,12 @@ return [
         ],
         // 'db' => [    //local
         //     'class' => 'yii\db\Connection',
-        //     'dsn' => 'mysql:host=localhost;dbname=pamojapay_db-353039386bbe',
-        //     'username' => 'root',
-        //     'password' => '',
-        //     'charset' => 'utf8',
-        // ],
-        // 'db' => [    //new dev db
-        //     'class' => 'yii\db\Connection',
-        //     'dsn' => 'mysql:host=localhost;dbname=pamojapay_db-353039386bbe',
+        //     'dsn' => 'mysql:host=localhost;dbname=pamoja_pay_db',
         //     'username' => 'root',
         //     'password' => 'Bongoflava@01',
         //     'charset' => 'utf8',
         // ],
+       
         'log' => [
             'traceLevel' => YII_DEBUG ? 3 : 0,
             'targets' => [
@@ -176,8 +173,13 @@ return [
         'support_payment_channels' => ['TigoPesa', 'Mpesa', 'AirtelMoney'],
         'valid_contribution_schedules' => ['daily', 'weekly', 'monthly', 'custom'],
 
-        //Selcom
-        'api_name' => 'Selcom',
-        'api_key' => '863239448',
+        'cloudinary_cloud_name' => 'dyl80qaoi',
+        'cloudinary_api_key' => '369393146328985', 
+        'cloudinary_api_secret' => 'VNRuShmGSHzZ0-md0gTr_lBFf8M',
+
+        'pamoja_external_api_url' => 'http://51.210.97.172:8081/v1/click-pesa/ussd-push', 
+
+        'service_name' => 'pamojaPay'
+
     ],
 ];

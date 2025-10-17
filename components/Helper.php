@@ -13,6 +13,10 @@ use app\models\ContributionSchedule;
 use app\models\Notifications;
 use app\models\NotificationRecipient;
 use app\models\Packages;
+use app\models\VikobaSettings;
+use app\models\MchezoSettings;
+use app\models\UjamaaSettings;
+use app\models\EventSettings;
 use app\models\PaymentGateway;
 use app\models\Payments;
 use yii\web\HttpException;
@@ -21,6 +25,8 @@ use DateInterval;
 use Exception;
 use Yii;
 use yii\base\Component;
+use yii\httpclient\Client;
+
  
 class Helper extends Component
 {
@@ -49,6 +55,38 @@ class Helper extends Component
         else {
             return false;
         }
+
+    }
+
+    # GET GROUP SETTING
+    public function getGroupSetting($group_id, $type){
+        if ($type == "Kikoba"){
+            $setting = VikobaSettings::find()->where(['group_id' => $group_id])->one();
+        }
+        else if ($type == "Mchezo"){
+            $setting = MchezoSettings::find()->where(['group_id' => $group_id])->one();
+        }
+        else if ($type == "Ujamaa"){
+            $setting = UjamaaSettings::find()->where(['group_id' => $group_id])->one();
+        }
+        else if ($type == "Event"){
+            $setting = EventSettings::find()->where(['group_id' => $group_id])->one();
+        }
+        else{
+            Yii::error("Group of type: ". $type . " and ID: ". $group_id . "Not Found");
+            $response = [
+                'success' => false,
+                'message' => 'Invalid Group type or ID'
+            ];
+
+            return $response;
+        }
+
+        $response = [
+            'success' => true,
+            'data' => $setting
+        ];
+        return $response;
 
     }
 
@@ -637,269 +675,321 @@ class Helper extends Component
     }
 
 
+    # ClickPesa Push Payment
+    public function clickPesaUssdPushInitiator($payload){
+        try {
+            $client = new Client();
+            $response = $client->createRequest()
+                ->setFormat(Client::FORMAT_JSON)
+                ->setMethod('POST')
+                ->setUrl(Yii::$app->params['pamoja_external_api_url'])
+                ->setData($payload)
+            ->send();
+            if ($response->isOk) {
+                $content = $response->getData();
+                Yii::error("This is the raw response Received From Pamoja External API");
+                Yii::error($content);
+                Yii::error("This is exctracted Message");
+                Yii::error($content['message']);
 
-                                # PAYMENT SECTION #
-                        
-    public static function pushPayment($msisdn, $amount, $channel, $user_id, $group_id, $type){
-        // This is to ensure browser does not timeout after 30 seconds
-        ini_set('max_execution_time', 300);
-        set_time_limit(300);
+                $response = [
+                    'success' => true,
+                    'code' => "00",
+                    'data' =>$content
+                ];
+            }
+            else{
+                $responseData = $response->getData();
+                Yii::error("Failed to get Pamoja External API response with Error: ");
+                Yii::error($responseData);
+                $response = [
+                    "success" => false,
+                    "code" => "45",
+                    "message" => $responseData['message'],
+                ];
+            }
+    
+            return $response;
 
-        //validate channel
-        $validChannel = Yii::$app->params['support_payment_channels'];
-        if (!in_array($channel, $validChannel)) {
-            return ['success' => false, 'code' => 23, 'message' => 'invalid channel'];
+        } catch (\Throwable $th) {
+            Yii::error("Failed to get Pamoja External API response with Error: ");
+            Yii::error($th->getMessage());
+            $response = [
+                "success" => false,
+                "code" => "55",
+                "message" => $th->getMessage(),
+            ];
+
+            return $response;
         }
-
-        //validate msisdn
-        $cus_mob = Yii::$app->helper->validateMobile($msisdn);
-        if (!$cus_mob['success']) {
-            return ['success' => false, 'code' => 25, 'message' => $cus_mob];
-        }
-        $payer_msisdn = $cus_mob['cus_mob'];
-
-        //validate amount
-        if ($amount < 1000) {
-            return ['success' => false, 'code' => 26, 'message' => 'invalid amount'];
-        }
-        
-        $trans_ref = 'PP'. time(); 
-
-        $model = new PushPaymentRequest();
-        $model->trans_ref = $trans_ref;
-        $model->trans_date = date('Y-m-d H:i:s');
-        $model->msisdn = $payer_msisdn;
-        $model->channel = $channel;
-        $model->amount = $amount;
-        $model->type = $type;
-        $model->status = 'Initiating';
-        $model->user_id = $user_id;
-        $model->created_at = date('Y-m-d H:i:s');
-        $model->save(false);
-
-        $create_order = self::createOrderMinimal($user_id, $amount, $msisdn, $group_id, $trans_ref, $type);
-
-        if (!$create_order['success']) {
-            $updateRequest = PushPaymentRequest::find()->where(['trans_ref' => $create_order['trans_ref']])->one();
-            $updateRequest->status = 'Failed';
-            $updateRequest->updated_at = date('Y-m-d H:i:s');
-            $updateRequest->save(false);
-
-           return $create_order;
-        }
-        
-        //update push payement request
-        $updateRequest = PushPaymentRequest::find()->where(['trans_ref' => $create_order['trans_ref']])->one();
-        $updateRequest->status = 'Success';
-        $updateRequest->updated_at  = date('Y-m-d H:i:s');
-        $updateRequest->mno_ref = $create_order['mno_ref'];
-        $updateRequest->save(false);
-
-        return ['success' => true, 'code' => 1,'message' => 'success'];
-       
     }
+
+    public function clickPesaUssdPushCallback($data){
+
+    }
+
+    //                             # PAYMENT SECTION #
+                        
+    // public static function pushPayment($msisdn, $amount, $channel, $user_id, $group_id, $type){
+    //     // This is to ensure browser does not timeout after 30 seconds
+    //     ini_set('max_execution_time', 300);
+    //     set_time_limit(300);
+
+    //     //validate channel
+    //     $validChannel = Yii::$app->params['support_payment_channels'];
+    //     if (!in_array($channel, $validChannel)) {
+    //         return ['success' => false, 'code' => 23, 'message' => 'invalid channel'];
+    //     }
+
+    //     //validate msisdn
+    //     $cus_mob = Yii::$app->helper->validateMobile($msisdn);
+    //     if (!$cus_mob['success']) {
+    //         return ['success' => false, 'code' => 25, 'message' => $cus_mob];
+    //     }
+    //     $payer_msisdn = $cus_mob['cus_mob'];
+
+    //     //validate amount
+    //     if ($amount < 1000) {
+    //         return ['success' => false, 'code' => 26, 'message' => 'invalid amount'];
+    //     }
+        
+    //     $trans_ref = 'PP'. time(); 
+
+    //     $model = new PushPaymentRequest();
+    //     $model->trans_ref = $trans_ref;
+    //     $model->trans_date = date('Y-m-d H:i:s');
+    //     $model->msisdn = $payer_msisdn;
+    //     $model->channel = $channel;
+    //     $model->amount = $amount;
+    //     $model->type = $type;
+    //     $model->status = 'Initiating';
+    //     $model->user_id = $user_id;
+    //     $model->created_at = date('Y-m-d H:i:s');
+    //     $model->save(false);
+
+    //     $create_order = self::createOrderMinimal($user_id, $amount, $msisdn, $group_id, $trans_ref, $type);
+
+    //     if (!$create_order['success']) {
+    //         $updateRequest = PushPaymentRequest::find()->where(['trans_ref' => $create_order['trans_ref']])->one();
+    //         $updateRequest->status = 'Failed';
+    //         $updateRequest->updated_at = date('Y-m-d H:i:s');
+    //         $updateRequest->save(false);
+
+    //        return $create_order;
+    //     }
+        
+    //     //update push payement request
+    //     $updateRequest = PushPaymentRequest::find()->where(['trans_ref' => $create_order['trans_ref']])->one();
+    //     $updateRequest->status = 'Success';
+    //     $updateRequest->updated_at  = date('Y-m-d H:i:s');
+    //     $updateRequest->mno_ref = $create_order['mno_ref'];
+    //     $updateRequest->save(false);
+
+    //     return ['success' => true, 'code' => 1,'message' => 'success'];
+       
+    // }
 
 
     
-    public static function createOrderMinimal($user_id, $amount, $msisdn, $group_id, $trans_ref, $type)
-    {
-        $user = User::findOne(['id' => $user_id]);
-        if (!empty($user)){
-            $sender_email = Yii::$app->params['support_email'];
-            $sender_name  = $user->name;
-            $sender_phone = $msisdn;
-            $currency    = "TZS";
-            $no_of_items = "1";
+    // public static function createOrderMinimal($user_id, $amount, $msisdn, $group_id, $trans_ref, $type)
+    // {
+    //     $user = User::findOne(['id' => $user_id]);
+    //     if (!empty($user)){
+    //         $sender_email = Yii::$app->params['support_email'];
+    //         $sender_name  = $user->name;
+    //         $sender_phone = $msisdn;
+    //         $currency    = "TZS";
+    //         $no_of_items = "1";
 
-            //Recording transaction in selcom table
-            $model = new Payments();
-            $model->group_id = $group_id;
-            $model->user_id = $user_id;
-            $model->reference = $trans_ref;
-            $model->amount = $amount;
-            $model->payment_date = date("Y-m-d H:i:s");
-            $model->payment_method = 'Selcom';
-            $model->status = 'pending';
-            $model->payment_for = $type;
-            if($model->save()){
-                //getting order_id from recorded data
-                $order_id = (string) $model->id;
+    //         //Recording transaction in selcom table
+    //         $model = new Payments();
+    //         $model->group_id = $group_id;
+    //         $model->user_id = $user_id;
+    //         $model->reference = $trans_ref;
+    //         $model->amount = $amount;
+    //         $model->payment_date = date("Y-m-d H:i:s");
+    //         $model->payment_method = 'Selcom';
+    //         $model->status = 'pending';
+    //         $model->payment_for = $type;
+    //         if($model->save()){
+    //             //getting order_id from recorded data
+    //             $order_id = (string) $model->id;
 
-                //getting Selcom api credentials
-                $api_name = Yii::$app->params['api_name'];
-                $selcom_credentials = PaymentGateway::findOne(['api_name' => $api_name]);
+    //             //getting Selcom api credentials
+    //             $api_name = Yii::$app->params['api_name'];
+    //             $selcom_credentials = PaymentGateway::findOne(['api_name' => $api_name]);
 
-                if (!empty($selcom_credentials)){
-                    $api_key = $selcom_credentials->api_key;
-                    $api_secret = $selcom_credentials->api_secret; 
-                    $base_url = $selcom_credentials->base_url;
-                    $api_endpoint = "/checkout/create-order-minimal";
-                    $url = $base_url.$api_endpoint;
-                    $isPost =true;
-                    $req = [
-                        "vendor"=>$selcom_credentials->vendor,
-                        "order_id"=>$order_id,
-                        "buyer_email"=>$sender_email,
-                        "buyer_name"=>$sender_name,
-                        "buyer_phone"=>$sender_phone,
-                        "amount"=>(int)$amount,
-                        "currency"=>$currency,
-                        "no_of_items"=>$no_of_items
-                    ];
-                    $authorization = base64_encode($api_key);
-                    $timestamp = date('c'); //2019-02-26T09:30:46+03:00 
-                    $signed_fields  = implode(',', array_keys($req));
-                    $digest = self::computeSignature($req, $signed_fields, $timestamp, $api_secret);
-                    if (!empty($digest)){
-                        $response = self::sendJSONPost($url, $isPost, json_encode($req), $authorization, $digest, $signed_fields, $timestamp);
-                        if(!empty($response)){
-                            $title = "Received Response from Selcom API";
-                            $message = "Payment with reference :".$trans_ref;   
-                            $data = json_encode($response);
-                            self::paymentLogs($title, $message, $data);
-                            //$trans_id = $order_id;
-                            if($response['resultcode']== "000") {
-                                $title = "Successfully Reseponse from Selcom API";
-                                $message = "Payment with reference :".$trans_ref;   
-                                $data = json_encode($response);
-                                self::paymentLogs($title, $message, $data);
+    //             if (!empty($selcom_credentials)){
+    //                 $api_key = $selcom_credentials->api_key;
+    //                 $api_secret = $selcom_credentials->api_secret; 
+    //                 $base_url = $selcom_credentials->base_url;
+    //                 $api_endpoint = "/checkout/create-order-minimal";
+    //                 $url = $base_url.$api_endpoint;
+    //                 $isPost =true;
+    //                 $req = [
+    //                     "vendor"=>$selcom_credentials->vendor,
+    //                     "order_id"=>$order_id,
+    //                     "buyer_email"=>$sender_email,
+    //                     "buyer_name"=>$sender_name,
+    //                     "buyer_phone"=>$sender_phone,
+    //                     "amount"=>(int)$amount,
+    //                     "currency"=>$currency,
+    //                     "no_of_items"=>$no_of_items
+    //                 ];
+    //                 $authorization = base64_encode($api_key);
+    //                 $timestamp = date('c'); //2019-02-26T09:30:46+03:00 
+    //                 $signed_fields  = implode(',', array_keys($req));
+    //                 $digest = self::computeSignature($req, $signed_fields, $timestamp, $api_secret);
+    //                 if (!empty($digest)){
+    //                     $response = self::sendJSONPost($url, $isPost, json_encode($req), $authorization, $digest, $signed_fields, $timestamp);
+    //                     if(!empty($response)){
+    //                         $title = "Received Response from Selcom API";
+    //                         $message = "Payment with reference :".$trans_ref;   
+    //                         $data = json_encode($response);
+    //                         self::paymentLogs($title, $message, $data);
+    //                         //$trans_id = $order_id;
+    //                         if($response['resultcode']== "000") {
+    //                             $title = "Successfully Reseponse from Selcom API";
+    //                             $message = "Payment with reference :".$trans_ref;   
+    //                             $data = json_encode($response);
+    //                             self::paymentLogs($title, $message, $data);
 
-                                // update payment table
-                                $updatePayment = Payments::findOne(['reference' => $trans_ref]);
-                                $updatePayment->status = 'verified';
-                                $updatePayment->save(false);
+    //                             // update payment table
+    //                             $updatePayment = Payments::findOne(['reference' => $trans_ref]);
+    //                             $updatePayment->status = 'verified';
+    //                             $updatePayment->save(false);
 
-                                $msisdn = $sender_phone;
-                                $result = [
-                                    "success" => true,
-                                    "result_code" => "000",
-                                    "trans_id" => $model->id,
-                                    "trans_ref" => $trans_ref,
-                                    "order_id" => $order_id,
-                                    "msisdn" => $msisdn,
-                                    "mno_ref" => $response['mno_ref'],
-                                    "message" => "Transaction successful",
-                                ];
-                                return $result;
-                            } else {
-                                // update payment table
-                                $updatePayment = Payments::findOne(['reference' => $trans_ref]);
-                                $updatePayment->status = 'rejected';
-                                $updatePayment->save(false);
+    //                             $msisdn = $sender_phone;
+    //                             $result = [
+    //                                 "success" => true,
+    //                                 "result_code" => "000",
+    //                                 "trans_id" => $model->id,
+    //                                 "trans_ref" => $trans_ref,
+    //                                 "order_id" => $order_id,
+    //                                 "msisdn" => $msisdn,
+    //                                 "mno_ref" => $response['mno_ref'],
+    //                                 "message" => "Transaction successful",
+    //                             ];
+    //                             return $result;
+    //                         } else {
+    //                             // update payment table
+    //                             $updatePayment = Payments::findOne(['reference' => $trans_ref]);
+    //                             $updatePayment->status = 'rejected';
+    //                             $updatePayment->save(false);
 
-                                $title = "Failed to create order";
-                                $message = "Payment with reference :".$trans_ref;
-                                $data = json_encode($response);
-                                self::paymentLogs($title, $message, $data);
+    //                             $title = "Failed to create order";
+    //                             $message = "Payment with reference :".$trans_ref;
+    //                             $data = json_encode($response);
+    //                             self::paymentLogs($title, $message, $data);
 
-                                $result = [
-                                    "success"=> false,
-                                    "result_code"=> 403,
-                                    "trans_id" => $model->id,
-                                    "trans_ref" => $trans_ref,
-                                    "order_id" => $order_id,
-                                    "msisdn" => $msisdn,
-                                    "message" => "Transaction failed with result Code: ".$response['resultcode'],
-                                ];
-                                return $result; 
-                            }
-                        } else {
-                            $title = "Failed to create order";
-                            $message = "Payment with reference :".$trans_ref;
-                            $data = json_encode($response);
-                            self::paymentLogs($title, $message, $data);
-                            throw new HttpException(450, 'No response come from sending push request', 14);
-                        }
-                    } else {
-                        $title = "Failed to create order";
-                        $message = "Payment with reference :".$trans_ref;
-                        $data = json_encode($digest);
-                        self::paymentLogs($title, $message, $data);
-                        throw new HttpException(450, 'No digest come from computeSignature', 15);  
-                    } 
-                } else {
-                    $title = "Payment Gateway not found in database";
-                    $message = "Payment with name :".$api_name;
-                    $data = "trans ref: ".$trans_ref;
-                    self::paymentLogs($title, $message, $data);
-                    throw new HttpException(450, 'External Api credentials not found in database', 16); 
-                }    
-            } else{
-                $title = "failed to save the Payments Record";
-                $message = "Payment with reference :" .$trans_ref;
-                $data = json_encode($model->errors);
-                self::paymentLogs($title, $message, $data);
-                throw new HttpException(450, 'Failed to save the transaction record', 18);
-            } 
-        } else{
-            $title = "User not found";
-            $message = "User with ID: " .$user_id;
-            $data = "trans ref: " .$trans_ref;
-            self::paymentLogs($title, $message, $data);
-            throw new HttpException(450, 'Failed to create order client not found', 17);
-        } 
-    }
+    //                             $result = [
+    //                                 "success"=> false,
+    //                                 "result_code"=> 403,
+    //                                 "trans_id" => $model->id,
+    //                                 "trans_ref" => $trans_ref,
+    //                                 "order_id" => $order_id,
+    //                                 "msisdn" => $msisdn,
+    //                                 "message" => "Transaction failed with result Code: ".$response['resultcode'],
+    //                             ];
+    //                             return $result; 
+    //                         }
+    //                     } else {
+    //                         $title = "Failed to create order";
+    //                         $message = "Payment with reference :".$trans_ref;
+    //                         $data = json_encode($response);
+    //                         self::paymentLogs($title, $message, $data);
+    //                         throw new HttpException(450, 'No response come from sending push request', 14);
+    //                     }
+    //                 } else {
+    //                     $title = "Failed to create order";
+    //                     $message = "Payment with reference :".$trans_ref;
+    //                     $data = json_encode($digest);
+    //                     self::paymentLogs($title, $message, $data);
+    //                     throw new HttpException(450, 'No digest come from computeSignature', 15);  
+    //                 } 
+    //             } else {
+    //                 $title = "Payment Gateway not found in database";
+    //                 $message = "Payment with name :".$api_name;
+    //                 $data = "trans ref: ".$trans_ref;
+    //                 self::paymentLogs($title, $message, $data);
+    //                 throw new HttpException(450, 'External Api credentials not found in database', 16); 
+    //             }    
+    //         } else{
+    //             $title = "failed to save the Payments Record";
+    //             $message = "Payment with reference :" .$trans_ref;
+    //             $data = json_encode($model->errors);
+    //             self::paymentLogs($title, $message, $data);
+    //             throw new HttpException(450, 'Failed to save the transaction record', 18);
+    //         } 
+    //     } else{
+    //         $title = "User not found";
+    //         $message = "User with ID: " .$user_id;
+    //         $data = "trans ref: " .$trans_ref;
+    //         self::paymentLogs($title, $message, $data);
+    //         throw new HttpException(450, 'Failed to create order client not found', 17);
+    //     } 
+    // }
 
-    public static function computeSignature($parameters, $signed_fields, $request_timestamp, $api_secret){
-        try {
-            $fields_order = explode(',', $signed_fields);
-            $sign_data = "timestamp=$request_timestamp";
-            foreach ($fields_order as $key) {
-            $sign_data .= "&$key=".$parameters[$key];
-            }
-            //HS256 Signature Method
-            return base64_encode(hash_hmac('sha256', $sign_data, $api_secret, true));
-        } catch (\Throwable $th) {
-            $title = "Error computing Selcom signature";
-            $message = $th->getMessage();
-            $data = 'Params' .json_encode($parameters) . ' Signed Fields:'.$signed_fields.' Timestamp:'.$request_timestamp.'Api Secret:'.$api_secret; 
-            self::paymentLogs($title, $message, $data);
-            return null;
-        }
-    }
+    // public static function computeSignature($parameters, $signed_fields, $request_timestamp, $api_secret){
+    //     try {
+    //         $fields_order = explode(',', $signed_fields);
+    //         $sign_data = "timestamp=$request_timestamp";
+    //         foreach ($fields_order as $key) {
+    //         $sign_data .= "&$key=".$parameters[$key];
+    //         }
+    //         //HS256 Signature Method
+    //         return base64_encode(hash_hmac('sha256', $sign_data, $api_secret, true));
+    //     } catch (\Throwable $th) {
+    //         $title = "Error computing Selcom signature";
+    //         $message = $th->getMessage();
+    //         $data = 'Params' .json_encode($parameters) . ' Signed Fields:'.$signed_fields.' Timestamp:'.$request_timestamp.'Api Secret:'.$api_secret; 
+    //         self::paymentLogs($title, $message, $data);
+    //         return null;
+    //     }
+    // }
 
-    public static function sendJSONPost($url, $isPost, $json, $authorization, $digest, $signed_fields, $timestamp) {
-        try {
-            $headers = [
-                "Content-type: application/json;",
-                //charset=\"utf-8\"", 
-                "Accept: application/json", 
-                "Cache-Control: no-cache",
-                "Authorization: SELCOM $authorization",
-                "Digest-Method: HS256",
-                "Digest: $digest",
-                "Timestamp: $timestamp",
-                "Signed-Fields: $signed_fields",
-            ];
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            if($isPost){
-                curl_setopt($ch, CURLOPT_POST, 1);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
-            }
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-            curl_setopt($ch,CURLOPT_TIMEOUT,90);
-            $result = curl_exec($ch);
-            curl_close($ch);
-            $resp = json_decode($result, true);
+    // public static function sendJSONPost($url, $isPost, $json, $authorization, $digest, $signed_fields, $timestamp) {
+    //     try {
+    //         $headers = [
+    //             "Content-type: application/json;",
+    //             //charset=\"utf-8\"", 
+    //             "Accept: application/json", 
+    //             "Cache-Control: no-cache",
+    //             "Authorization: SELCOM $authorization",
+    //             "Digest-Method: HS256",
+    //             "Digest: $digest",
+    //             "Timestamp: $timestamp",
+    //             "Signed-Fields: $signed_fields",
+    //         ];
+    //         $ch = curl_init();
+    //         curl_setopt($ch, CURLOPT_URL, $url);
+    //         if($isPost){
+    //             curl_setopt($ch, CURLOPT_POST, 1);
+    //             curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
+    //         }
+    //         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    //         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    //         curl_setopt($ch,CURLOPT_TIMEOUT,90);
+    //         $result = curl_exec($ch);
+    //         curl_close($ch);
+    //         $resp = json_decode($result, true);
 
-            Yii::error($json);
-            Yii::error("The selcom Response");
-            Yii::error($result);
-            return $resp;
-        } 
-        catch (\Throwable $th) {
-            $title = "Error sending Selcom JSON Post";
-            $message = $th->getMessage();
-            $data = 'Url'.json_encode($url).' isPost:'.$isPost.' json:'.$json.' Authorization:'.$authorization;
-            self::paymentLogs($title, $message, $data);
-            Yii::error("Error On sending http request to selcom api");
-            Yii::error($th->getMessage());
-            return false;
-        }
+    //         Yii::error($json);
+    //         Yii::error("The selcom Response");
+    //         Yii::error($result);
+    //         return $resp;
+    //     } 
+    //     catch (\Throwable $th) {
+    //         $title = "Error sending Selcom JSON Post";
+    //         $message = $th->getMessage();
+    //         $data = 'Url'.json_encode($url).' isPost:'.$isPost.' json:'.$json.' Authorization:'.$authorization;
+    //         self::paymentLogs($title, $message, $data);
+    //         Yii::error("Error On sending http request to selcom api");
+    //         Yii::error($th->getMessage());
+    //         return false;
+    //     }
         
-    }
+    // }
 
 
     public static function paymentLogs($title, $message, $data){
