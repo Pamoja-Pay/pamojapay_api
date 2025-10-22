@@ -61,7 +61,7 @@ return [
         ],
         'db' => [  //live
             'class' => 'yii\db\Connection',
-            'dsn' => 'mysql:host=localhost;dbname=pamoja_pay_db',
+            'dsn' => 'mysql:host=51.210.97.172;port=3306;dbname=pamoja_pay_db',
             'username' => 'minick',
             'password' => 'Bongoflava@01',
             'charset' => 'utf8',
